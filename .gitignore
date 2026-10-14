@@ -1,0 +1,19 @@
+# Configurazioni locali dell'IDE
+.idea/
+*.iml
+
+# Compilazione backend
+backend/target/
+
+# Dipendenze e compilazione frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Configurazioni locali e segreti
+.env
+.env.*
+*.local.properties
+
+# Log
+*.log
