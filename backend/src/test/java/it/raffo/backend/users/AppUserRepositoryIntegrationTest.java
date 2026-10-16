@@ -134,6 +134,31 @@ class AppUserRepositoryIntegrationTest {
         assertEquals(0, updatedRows);
     }
 
+    @Test
+    void changesPasswordAndIncrementsAuthVersionForExistingUser() {
+        UUID userId = UUID.randomUUID();
+
+        AppUser user = createUser(userId, 5L);
+        repository.saveAndFlush(user);
+
+        String currentPasswordHash = user.getPasswordHash();
+        String newPasswordHash = "nuovo-hash-di-test";
+
+        int updatedRows = repository.changePasswordIfUnchanged(
+                userId,
+                5L,
+                currentPasswordHash,
+                newPasswordHash
+        );
+
+        AppUser reloadedUser = repository.findById(userId)
+                .orElseThrow();
+
+        assertEquals(1, updatedRows);
+        assertEquals(newPasswordHash, reloadedUser.getPasswordHash());
+        assertEquals(6L, reloadedUser.getAuthVersion());
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     private AppUser createUser(UUID userId, long authVersion) {

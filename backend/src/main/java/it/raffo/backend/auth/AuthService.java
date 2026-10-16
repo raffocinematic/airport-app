@@ -12,10 +12,17 @@ import java.util.UUID;
 
 import it.raffo.backend.common.DuplicateResourceException;
 import it.raffo.backend.common.InvalidCredentialsException;
+import it.raffo.backend.common.InvalidPasswordException;
+
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * Contiene la logica applicativa di autenticazione.
- *
+ * <p>
  * Il controller riceverà le richieste HTTP, mentre questo service applica
  * le regole di business: normalizzazione email, hash password, controllo
  * duplicati e verifica credenziali.
@@ -26,21 +33,31 @@ public class AuthService {
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final TransactionTemplate changePasswordTransaction;
 
-    public AuthService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(AppUserRepository appUserRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtService jwtService,
+                       PlatformTransactionManager transactionManager) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+
+        this.changePasswordTransaction =
+                new TransactionTemplate(transactionManager);
+
+        this.changePasswordTransaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
      * Registra un nuovo utente tecnico dell'applicazione.
-     *
+     * <p>
      * In questa fase non è una registrazione pubblica: serve a creare utenti
      * ADMIN e OPERATORI per testare login e permessi.
      */
     @Transactional
-    public AuthResponse register (RegisterRequest request) {
+    public AuthResponse register(RegisterRequest request) {
 
         // Normalizziamo l'email per evitare duplicati logici come "Mario@Test.it" e "mario@test.it ".
         String normalizedEmail = normalizeEmail(request.email());
@@ -70,7 +87,7 @@ public class AuthService {
 
     /**
      * Verifica le credenziali dell'utente.
-     *
+     * <p>
      * Il messaggio di errore resta generico per non rivelare se il problema
      * riguarda email inesistente, account disattivato o password errata.
      */
@@ -82,11 +99,11 @@ public class AuthService {
         AppUser user = appUserRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
-        if(!user.isActive()) {
+        if (!user.isActive()) {
             throw new InvalidCredentialsException("Invalid credentials");
         }
 
-        if(!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new InvalidCredentialsException("Invalid credentials");
         }
 
@@ -101,9 +118,60 @@ public class AuthService {
     public void logout(UUID userId) {
         int updateRows = appUserRepository.incrementAuthVersion(userId);
 
-        if(updateRows == 0) {
+        if (updateRows == 0) {
             throw new InvalidCredentialsException("Invalid credentials");
         }
+    }
+
+    public AuthResponse changePassword(
+            UUID userId,
+            long expectedAuthVersion,
+            ChangePasswordRequest request
+    ) {
+        AppUser updatedUser = changePasswordTransaction.execute(status -> {
+            AppUser user = appUserRepository.findById(userId)
+                    .orElseThrow(() ->
+                            new InvalidCredentialsException("Invalid credentials")
+                    );
+
+            if (!user.isActive()
+                    || user.getAuthVersion() != expectedAuthVersion) {
+                throw new InvalidCredentialsException("Invalid credentials");
+            }
+
+            String currentPassword = request.currentPassword();
+            String currentPasswordHash = user.getPasswordHash();
+
+            if (currentPassword.getBytes(StandardCharsets.UTF_8).length > 72
+                    || !passwordEncoder.matches(
+                    currentPassword, currentPasswordHash
+            )) {
+                throw new InvalidCredentialsException("Invalid credentials");
+            }
+
+            validateNewPassword(currentPassword, request.newPassword());
+
+            String newPasswordHash =
+                    passwordEncoder.encode(request.newPassword());
+
+            int updatedRows = appUserRepository.changePasswordIfUnchanged(
+                    userId,
+                    expectedAuthVersion,
+                    currentPasswordHash,
+                    newPasswordHash
+            );
+
+            if (updatedRows == 0) {
+                throw new InvalidCredentialsException("Invalid credentials");
+            }
+
+            return appUserRepository.findById(userId)
+                    .orElseThrow(() ->
+                            new InvalidCredentialsException("Invalid credentials")
+                    );
+        });
+
+        return toResponse(updatedUser);
     }
 
     @Transactional(readOnly = true)
@@ -112,7 +180,7 @@ public class AuthService {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
-        if(!user.isActive()) {
+        if (!user.isActive()) {
             throw new InvalidCredentialsException("Invalid credentials");
         }
 
@@ -147,6 +215,25 @@ public class AuthService {
                 jwtService.generateAccessToken(user),
                 jwtService.expiresInSeconds()
         );
+    }
+
+    private void validateNewPassword(String currentPassword, String newPassword) {
+
+        int passwordBytes =
+                newPassword.getBytes(StandardCharsets.UTF_8).length;
+
+        if (passwordBytes > 72) {
+            throw new InvalidPasswordException(
+                    "New password must not exceed 72 UTF-8 bytes"
+            );
+        }
+
+        if (newPassword.equals(currentPassword)) {
+            throw new InvalidPasswordException(
+                    "New password must be different from current password"
+            );
+        }
+
     }
 
 }

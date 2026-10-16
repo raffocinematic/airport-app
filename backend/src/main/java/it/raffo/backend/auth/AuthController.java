@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 
 import java.util.UUID;
 
@@ -63,5 +65,26 @@ public class AuthController {
     public void logout(@AuthenticationPrincipal Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
         authService.logout(userId);
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<AuthResponse> changePassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        Number tokenAuthVersion = jwt.getClaim("authVersion");
+        long expectedAuthVersion = tokenAuthVersion.longValue();
+
+        AuthResponse response = authService.changePassword(
+                userId,
+                expectedAuthVersion,
+                request
+        );
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(response);
     }
 }

@@ -35,6 +35,17 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
     }
 
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidPassword(
+            InvalidPasswordException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed",
+                Map.of("newPassword", exception.getMessage())
+        );
+    }
+
     // --------------------------------------------------------------------------------
 
 

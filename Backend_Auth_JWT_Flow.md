@@ -1,8 +1,8 @@
-# Registration/Login Flow con JWT - Airport App
+# Autenticazione con JWT - Airport App
 
 ## Stato della verifica — aggiornamento del 16 ottobre 2026
 
-L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. Durante questo aggiornamento l’assistente ha controllato i sorgenti senza rieseguire i test di integrazione; le diverse verifiche sono registrate separatamente.
+L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. È stato inoltre implementato `POST /api/v1/auth/change-password`: lo sviluppatore ha confermato su Postman il cambio password, la revoca del vecchio token, l’utilizzo del nuovo token e i casi di errore descritti nella sezione Test. Nel repository è presente anche il nuovo test del caso positivo di aggiornamento password/versione. Durante questo aggiornamento l’assistente ha controllato i sorgenti senza eseguire test; le diverse verifiche sono registrate separatamente. Gli ulteriori test del cambio password sono rinviati per scelta dello sviluppatore.
 
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
@@ -11,7 +11,7 @@ L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono 
 
 ## Obiettivo
 
-Questo documento descrive lo stato attuale del backend per autenticazione, registrazione tecnica, login con JWT e gestione base dei ruoli `ADMIN` e `OPERATORI`.
+Questo documento descrive lo stato attuale del backend per autenticazione, registrazione tecnica, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`.
 
 La priorita attuale e avere un flusso minimo funzionante:
 
@@ -19,7 +19,9 @@ La priorita attuale e avere un flusso minimo funzionante:
 2. login con email e password;
 3. generazione di un access token JWT;
 4. uso del token per chiamare API protette;
-5. distinzione tra area ADMIN e area OPERATORI.
+5. distinzione tra area ADMIN e area OPERATORI;
+6. logout con revoca dei token precedenti;
+7. cambio della propria password con emissione di un nuovo token.
 
 ## Tecnologie usate nel backend
 
@@ -57,6 +59,7 @@ Nota: nel documento di analisi iniziale era citato Flyway, ma il progetto attual
 - `backend/src/main/java/it/raffo/backend/auth/JwtService.java`
 - `backend/src/main/java/it/raffo/backend/auth/RegisterRequest.java`
 - `backend/src/main/java/it/raffo/backend/auth/LoginRequest.java`
+- `backend/src/main/java/it/raffo/backend/auth/ChangePasswordRequest.java`
 - `backend/src/main/java/it/raffo/backend/auth/AuthResponse.java`
 - `backend/src/main/java/it/raffo/backend/auth/MeResponse.java`
 
@@ -73,6 +76,7 @@ Nota: nel documento di analisi iniziale era citato Flyway, ma il progetto attual
 - `backend/src/main/java/it/raffo/backend/common/ApiErrorResponse.java`
 - `backend/src/main/java/it/raffo/backend/common/DuplicateResourceException.java`
 - `backend/src/main/java/it/raffo/backend/common/InvalidCredentialsException.java`
+- `backend/src/main/java/it/raffo/backend/common/InvalidPasswordException.java`
 
 ### Endpoint di prova per ruoli
 
@@ -96,7 +100,7 @@ La tabella `app_users` contiene questi campi principali:
 - `password_hash`: password salvata come hash, non in chiaro;
 - `role`: ruolo applicativo, `ADMIN` oppure `OPERATORI`;
 - `active`: indica se l'account e attivo;
-- `auth_version`: contatore usato per revocare token precedenti al logout;
+- `auth_version`: contatore usato per revocare token precedenti al logout o al cambio password;
 - `created_at`: data di creazione.
 
 ## Registration flow
@@ -108,6 +112,8 @@ POST /api/v1/auth/register
 ```
 
 Per ora e pubblico per facilitare lo sviluppo. Nel prodotto finale non dovrebbe essere una registrazione libera: dovra diventare una procedura tecnica riservata o essere sostituita da gestione utenti/admin.
+
+La policy attuale di `RegisterRequest` resta di 8–128 caratteri con `@NotBlank`. Il limite di 72 byte UTF-8 e il minimo di 15 caratteri introdotti per il cambio password non sono stati applicati alla registrazione.
 
 ### Passaggi logici
 
@@ -207,7 +213,7 @@ La password del database e il segreto JWT sono forniti tramite le variabili d’
 
 ## Uso del token
 
-Dopo login o register, il client riceve `accessToken`.
+Dopo login, register o cambio password riuscito, il client riceve `accessToken`. Dopo il cambio password deve usare il nuovo token: quelli emessi con la versione precedente vengono rifiutati alle richieste successive.
 
 Per chiamare API protette deve inviarlo nell'header HTTP:
 
@@ -235,6 +241,7 @@ POST /api/v1/auth/login
 ```http
 GET /api/v1/auth/me
 POST /api/v1/auth/logout
+POST /api/v1/auth/change-password
 ```
 
 ### Solo ADMIN
@@ -289,7 +296,7 @@ Questo permette di usare regole come:
 In sintesi:
 
 - register e login sono pubblici;
-- `/api/v1/auth/me` e `POST /api/v1/auth/logout` richiedono token valido, account attivo e versione coincidente;
+- `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` e `POST /api/v1/auth/change-password` richiedono token valido, account attivo e versione coincidente; il cambio password è accessibile a entrambi i ruoli;
 - `/api/v1/admin/**` richiede ruolo ADMIN;
 - `/api/v1/operatori/**` richiede ruolo OPERATORI;
 - tutte le altre API richiedono autenticazione.
@@ -338,6 +345,55 @@ La query usa `@Modifying(flushAutomatically = true, clearAutomatically = true)`:
 Alla richiesta successiva il converter rifiuta i token con versione precedente: vengono revocati anche quelli delle altre sessioni dello stesso utente. Un nuovo login emette un token con la versione aggiornata.
 
 **FATTO — incremento atomico:** i tre test di integrazione del repository, confermati come superati dallo sviluppatore, verificano incremento singolo, due transazioni concorrenti con risultato `5 -> 7` e utente inesistente. La prova concorrente attende entrambi i commit prima della lettura finale; gli scenari HTTP restano verifiche distinte.
+
+## Cambio password — FATTO
+
+Endpoint autenticato, disponibile sia ad ADMIN sia a OPERATORI:
+
+```http
+POST /api/v1/auth/change-password
+Authorization: Bearer TOKEN_ATTUALE
+Content-Type: application/json
+```
+
+Esempio di body, con valori dimostrativi:
+
+```json
+{
+  "currentPassword": "PasswordAttuale!2026",
+  "newPassword": "NuovaPassword!2026"
+}
+```
+
+### Validazione della richiesta
+
+- `currentPassword`: obbligatoria e non composta da soli spazi, massimo 128 caratteri nel DTO; non viene imposto il nuovo minimo per consentire l’uso delle password già esistenti. Il service rifiuta con `401` valori oltre 72 byte UTF-8 prima di chiamare BCrypt.
+- `newPassword`: obbligatoria e non composta da soli spazi, lunghezza 15–72 secondo `@Size`, massimo 72 byte UTF-8 verificati nel service e diversa dalla password attuale.
+- Le password non vengono normalizzate con `trim`: gli spazi fanno parte del valore. Con caratteri accentati o altri caratteri Unicode, numero di caratteri e numero di byte possono differire.
+- Resta in uso `BCryptPasswordEncoder`. La policy della registrazione è distinta e conserva i limiti attuali di 8–128 caratteri.
+
+### Passaggi logici e transazione
+
+1. `AuthController` valida `ChangePasswordRequest` ed estrae UUID utente e `authVersion` dal JWT già autenticato. Il body non contiene un identificativo utente: ciascun utente può cambiare la propria password.
+2. `AuthService.changePassword()` apre una transazione indipendente con `TransactionTemplate` e propagazione `REQUIRES_NEW`.
+3. Il service rilegge l’utente, verifica account attivo e versione attesa, poi confronta la password attuale con l’hash tramite `PasswordEncoder.matches()`.
+4. Dopo la validazione della nuova password, il service ne calcola l’hash BCrypt.
+5. `AppUserRepository.changePasswordIfUnchanged()` aggiorna insieme `passwordHash` e `authVersion = authVersion + 1`. La clausola WHERE richiede UUID, account attivo, versione attesa e hash precedente corrispondenti.
+6. Una riga aggiornata indica successo; zero righe causano `InvalidCredentialsException`. La condizione evita di sovrascrivere un cambio password o una revoca intervenuti dopo la lettura iniziale. Questo comportamento concorrente è implementato, ma non è coperto dal nuovo test del caso positivo.
+7. La query esegue flush e clear del contesto JPA. Il service rilegge l’utente dentro la transazione e restituisce lo stato aggiornato al chiamante.
+8. Dopo il completamento del commit, il service genera il JWT usando quello stato e restituisce `AuthResponse`. Se la transazione fallisce, il flusso non raggiunge la generazione del token.
+
+La modifica della password e l’incremento della versione avvengono con un unico UPDATE; non viene chiamato separatamente il metodo di logout. Il converter rifiuta alle richieste successive tutti i token con la versione precedente, anche se emessi da altri login dello stesso utente. Il caso del vecchio token è stato confermato su Postman.
+
+### Risposta ed errori
+
+- Successo: `200 OK`, body `AuthResponse` con dati utente, nuovo `accessToken` ed `expiresInSeconds`; header `Cache-Control: no-store`.
+- DTO non valido: `400 Bad Request`, body `ApiErrorResponse` con `fieldErrors` relativi ai campi non validi.
+- Nuova password identica a quella attuale oppure oltre 72 byte UTF-8: `InvalidPasswordException`, trasformata in `400` con messaggio `Validation failed` e dettaglio in `fieldErrors.newPassword`.
+- Password attuale errata, utente inesistente/inattivo, versione non coincidente o UPDATE con zero righe: `401` con messaggio generico `Invalid credentials`.
+- Token assente, non valido o revocato: `401` gestito dalla catena di sicurezza con il messaggio generico del relativo entry point.
+
+Il flusso riguarda il cambio volontario della propria password. Password temporanee, cambio obbligatorio e funzionalità frontend restano sviluppi separati.
 
 ## Test manuali con PowerShell
 
@@ -478,16 +534,17 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Backend Spring Boot, Maven e Java 17.
 - **FATTO** — PostgreSQL e Liquibase configurati; migrazioni e repository verificati nei tre test su PostgreSQL 17 temporaneo, con esito positivo confermato dallo sviluppatore. Gli altri ambienti restano da verificare.
 - **FATTO** — Migrazione `app_users`, entity `AppUser`, enum `ADMIN`/`OPERATORI` e repository utenti.
-- **FATTO** — DTO register/login/me e risposta autenticazione.
+- **FATTO** — DTO register/login/me/change-password e risposta autenticazione.
 - **FATTO** — Registrazione con normalizzazione email, controllo duplicati e vincolo univoco nel database.
 - **FATTO** — Hash password con `BCryptPasswordEncoder`.
 - **FATTO** — Login con verifica password e account attivo; errore generico per credenziali non valide.
-- **FATTO** — Emissione JWT HS256 dopo register/login, durata 900 secondi.
+- **FATTO** — Emissione JWT HS256 dopo register/login e cambio password, durata 900 secondi.
 - **FATTO** — Resource Server per validazione JWT; controlli espliciti issuer/audience ancora assenti.
 - **FATTO** — Controllo account attivo e `authVersion` a ogni richiesta autenticata; authority dal ruolo corrente nel database.
 - **FATTO** — `/me`, ping ADMIN/OPERATORI e autorizzazione separata delle due aree.
 - **FATTO** — Logout `204` e incremento atomico di `authVersion` tramite UPDATE; test concorrente del repository superato e revoca su `/me` di due token precedenti confermata dallo sviluppatore.
-- **FATTO** — Errori applicativi per duplicati, credenziali errate e validazione DTO.
+- **FATTO** — Cambio password autenticato con verifica della password attuale, validazione della nuova password, UPDATE condizionale di hash/versione e nuovo JWT dopo il commit; risposta `200` con `Cache-Control: no-store`. Prove Postman confermate dallo sviluppatore; copertura automatica limitata al caso positivo del repository presente nei sorgenti.
+- **FATTO** — Errori applicativi per duplicati, credenziali errate, validazione DTO e nuova password non ammessa.
 - **FATTO** — Gestori JSON 401/403 collegati a `exceptionHandling` e al Resource Server; 401 con header Bearer. Provati manualmente token assente, malformato e revocato, e accesso ADMIN negato a OPERATORI.
 - **FATTO** — Controlli espliciti di subject e tipo/valore di `authVersion`, con rifiuto tramite `BadCredentialsException`.
 - **FATTO** — 20 casi del converter superati con JDK 17; tre test di integrazione PostgreSQL con esito positivo confermato dallo sviluppatore. Esecuzioni e limiti distinti nella sezione Test.
@@ -496,7 +553,6 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 
 ### Backend auth
 
-- **NON IMPLEMENTATO** — `POST /api/v1/auth/change-password`.
 - **NON IMPLEMENTATO** — Predisposizione riservata degli account: `/register` è pubblico e accetta anche `ADMIN`. Il pannello web utenti resta rinviato.
 
 - **PARZIALE** — Garantire `409` anche per violazioni del vincolo univoco causate da registrazioni concorrenti.
@@ -510,7 +566,7 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 - **FATTO** — Liquibase anziché Flyway: continuare con Liquibase e riallineare la documentazione in una revisione successiva.
 - **NON IMPLEMENTATO** — RS256 con chiave privata esterna; attualmente firma HS256.
 - **NON IMPLEMENTATO** — Claim `aud`, `jti` e controlli espliciti di issuer/audience; il token attuale contiene anche email.
-- **PARZIALE** — BCrypt anziché Argon2id proposto; minimo password 8 caratteri anziché 15. Allineare la policy e verificare password lunghe senza troncamento.
+- **PARZIALE** — BCrypt mantenuto per scelta dello sviluppatore anziché migrazione ad Argon2id. Il cambio password richiede almeno 15 caratteri e al massimo 72 byte UTF-8; la registrazione conserva 8–128 caratteri e non ha il controllo esplicito dei byte. L’allineamento della policy di registrazione resta separato dal cambio password completato.
 - **NON IMPLEMENTATO** — Password temporanee, scadenza, cambio obbligatorio e blocco delle API business; campi `mustChangePassword`, `temporaryPasswordExpiresAt`, `updatedAt` assenti.
 - **NON IMPLEMENTATO** — Limite ai tentativi di login e configurazione CORS dedicata.
 - **NON IMPLEMENTATO** — Negazione dei percorsi non dichiarati: attualmente richiedono soltanto autenticazione.
@@ -556,7 +612,7 @@ Esecuzione dalla cartella `backend`, con JDK 17:
 
 Questa esecuzione mirata non avvia Spring o PostgreSQL e non esegue `BackendApplicationTests.contextLoads()`. I Jwt sono costruiti direttamente in memoria: questi test non verificano firma, issuer, audience, scadenza, status/header/body HTTP o persistenza reale. Una `BadCredentialsException` nei test unitari non equivale, da sola, a una verifica HTTP del 401.
 
-#### Test di integrazione del repository su PostgreSQL — FATTO
+#### Test di integrazione del repository su PostgreSQL — stato delle verifiche
 
 `AppUserRepositoryIntegrationTest` usa `@DataJpaTest`, Testcontainers e l’immagine `postgres:17-alpine`. `@ServiceConnection` collega Spring al PostgreSQL temporaneo, separato dal database di sviluppo. Liquibase applica le migrazioni e Hibernate valida lo schema.
 
@@ -566,9 +622,11 @@ Questa esecuzione mirata non avvia Spring o PostgreSQL e non esegue `BackendAppl
 | `incrementsAuthVersionWithoutLosingConcurrentUpdates` | Due transazioni aggiornano la stessa riga e restituiscono entrambe `1`; dopo entrambi i commit la versione è `7` |
 | `returnsZeroWhenUserDoesNotExist` | Nessuna riga aggiornata e risultato `0` per un UUID senza utente |
 
+È presente anche `changesPasswordAndIncrementsAuthVersionForExistingUser`, aggiunto dallo sviluppatore: salva un utente con versione `5`, esegue `changePasswordIfUnchanged()` con versione e hash corretti e verifica una riga aggiornata, il nuovo hash e versione `6`. Usa hash dimostrativi: non verifica BCrypt, il service o le risposte HTTP. La presenza e le asserzioni sono state controllate nei sorgenti; l’assistente non ne ha eseguito il test e non attesta un nuovo esito combinato dei quattro metodi.
+
 Nel test concorrente `Propagation.NOT_SUPPORTED` disabilita la transazione automatica del metodo. L’utente viene inserito e confermato prima dei lavoratori; due thread aprono transazioni separate con `TransactionTemplate` e si sincronizzano con `CyclicBarrier(2)` prima degli UPDATE. I `Future` vengono attesi prima della lettura finale. Il blocco `finally` termina i lavoratori e rimuove l’utente inserito con commit.
 
-**Esito: tre test superati, confermato dallo sviluppatore durante il training.** L’assistente ha verificato i sorgenti senza rieseguire questi test durante l’aggiornamento del documento. La precedente esecuzione dei 20 casi del converter è distinta: non viene attestata un’unica esecuzione combinata.
+**Esito precedentemente confermato: i tre test del logout sono superati, come riportato dallo sviluppatore durante il training.** L’assistente ha verificato i sorgenti senza rieseguire questi test durante l’aggiornamento del documento. La precedente esecuzione dei 20 casi del converter è distinta: non viene attestata un’unica esecuzione combinata.
 
 Per eseguire la classe dalla cartella `backend`, con Docker Engine disponibile:
 
@@ -589,26 +647,48 @@ Le prove seguenti sono state eseguite dallo sviluppatore con Postman e confermat
 - Sequenza `/me` con token valido, logout, riuso dello stesso token su `/me`, nuovo login e `/me` con nuovo token: `200 -> 204 -> 401 con JSON -> 200`.
 - Dopo il passaggio all’UPDATE atomico: due login dello stesso operatore producono i token A e B, entrambi accettati da `/me` (`200`); logout con A (`204`); A e B rifiutati da `/me` (`401` con JSON); un nuovo login permette nuovamente `/me` (`200`). Esito confermato dallo sviluppatore.
 
+#### Cambio password: prove Postman confermate — FATTO
+
+Lo sviluppatore ha confermato di aver eseguito con successo, passo per passo, le seguenti prove locali:
+
+| Scenario | Risultato confermato |
+| --- | --- |
+| Login iniziale e `/me` con token A | `200` |
+| Cambio password con token A e password attuale corretta | `200`, nuovo token B e header `Cache-Control: no-store` |
+| `/me` con token A dopo il cambio | `401` |
+| `/me` con token B | `200` |
+| Login con la vecchia password | `401` |
+| Login con la nuova password | `200` |
+| Cambio password senza autenticazione, con body valido | `401` |
+| Token valido, password attuale errata e nuova password valida | `401`, messaggio `Invalid credentials` |
+| Token valido, password attuale corretta e nuova password troppo corta | `400`, errore in `fieldErrors.newPassword` |
+| Token valido, nuova password uguale a quella attuale | `400`, errore in `fieldErrors.newPassword` |
+| `/me` con token B dopo le richieste rifiutate | `200` |
+
+Queste sono verifiche manuali dichiarate dallo sviluppatore, non esecuzioni automatiche dell’assistente. Non attestano prove concorrenti, rollback, casi Unicode oltre 72 byte o una ripetizione completa con entrambi i ruoli.
+
+**Ulteriori test del cambio password rinviati per scelta dello sviluppatore:** la copertura automatica attuale comprende il nuovo caso positivo del repository presente nei sorgenti. I casi di rifiuto della query, la concorrenza del cambio password, la validazione completa, il rollback e i controlli HTTP automatici non sono stati aggiunti o eseguiti in questa revisione.
+
 #### Scenari ancora DA VERIFICARE
 
 - Test HTTP automatici di 401/403, content type, body JSON e header Bearer.
 - Email duplicata: `409`, anche con registrazioni concorrenti.
-- Login con password errata, email inesistente o account disattivato: `401` generico, nessun token.
+- Login con email inesistente o account disattivato e ulteriori casi di password errata: `401` generico, nessun token. Il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
 - Token ADMIN: ping ADMIN `200`, ping OPERATORI `403`; non dedurre questa verifica HTTP dai test unitari dei ruoli.
 - Token con firma alterata o scaduto: `401`; issuer/audience errati dopo i relativi controlli, ancora da implementare.
 - Estensione della revoca dei due token ai ping e a richieste HTTP di logout concorrenti. La revoca su `/me` è confermata manualmente; la concorrenza dell’UPDATE è verificata nel test del repository.
 - Disattivazione dell’account dopo emissione token verificata attraverso una richiesta HTTP e database reale.
-- Header di cache di login/register e ulteriori test di integrazione dei flussi auth. I tre test PostgreSQL del repository sono completati; `contextLoads()` non è stato verificato in questa revisione.
+- Header di cache di login/register e ulteriori test di integrazione dei flussi auth. Il successo dei tre test PostgreSQL del logout è stato confermato in precedenza; il nuovo test positivo del cambio password è presente nei sorgenti. `contextLoads()` e la classe aggiornata nel suo insieme non sono stati eseguiti dall’assistente in questa revisione.
 
 ## Ordine di ripresa
 
 1. **FATTO per gli scenari registrati** — Errori JSON 401/403, controlli dei claim e 20 casi del converter; incremento atomico di `authVersion`, tre test PostgreSQL del repository e prova Postman di revoca di due token su `/me`.
-2. Prossimo sviluppo consigliato: implementare il cambio password riutilizzando l’incremento atomico per revocare i token precedenti.
-3. Completare le verifiche HTTP automatiche e gli scenari residui, la validazione JWT e la predisposizione riservata degli account.
+2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
+3. Prossimi sviluppi backend auth: predisposizione riservata degli account, validazione JWT e allineamento della policy di registrazione. Le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
 4. Sviluppare login e landing Angular.
 5. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
-Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo. Per questa revisione è stata autorizzata esplicitamente la scrittura assistita dei soli test e del documento.
+Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo. Le precedenti eccezioni autorizzate per la scrittura assistita di test restano riferite a quelle attività. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 
 ## Nota didattica importante
 

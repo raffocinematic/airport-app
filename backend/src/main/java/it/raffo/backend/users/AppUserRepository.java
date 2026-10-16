@@ -28,4 +28,21 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
         where u.id = :userId
         """)
     int incrementAuthVersion(@Param("userId") UUID userId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        update AppUser u
+        set u.passwordHash = :newPasswordHash,
+            u.authVersion = u.authVersion + 1
+        where u.id = :userId
+          and u.active = true
+          and u.authVersion = :expectedAuthVersion
+          and u.passwordHash = :currentPasswordHash
+        """)
+    int changePasswordIfUnchanged(
+            @Param("userId") UUID userId,
+            @Param("expectedAuthVersion") long expectedAuthVersion,
+            @Param("currentPasswordHash") String currentPasswordHash,
+            @Param("newPasswordHash") String newPasswordHash
+    );
 }
