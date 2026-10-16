@@ -9,6 +9,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpHeaders;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -37,6 +38,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
                 Map.of()
         );
 
+        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(response.getOutputStream(), body);

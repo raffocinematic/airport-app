@@ -58,6 +58,8 @@ public class SecurityConfig {
                         .accessDeniedHandler(customAccessDeniedHandler)
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(customAuthenticationEntryPoint)
+                        .accessDeniedHandler(customAccessDeniedHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(airportJwtAuthenticationConverter))
                 )
                 .formLogin(AbstractHttpConfigurer::disable)

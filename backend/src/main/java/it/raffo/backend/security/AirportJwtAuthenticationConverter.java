@@ -27,7 +27,7 @@ public class AirportJwtAuthenticationConverter implements Converter<Jwt, Abstrac
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
         // Il subject del token contiene l'UUID stabile dell'utente.
-        UUID userId = UUID.fromString(jwt.getSubject());
+        UUID userId = extractUserId(jwt);
 
         // Ogni richiesta autenticata rilegge l'utente dal DB: cosi' ruoli, stato e revoche sono aggiornati.
         AppUser user = appUserRepository.findById(userId)
@@ -38,9 +38,9 @@ public class AirportJwtAuthenticationConverter implements Converter<Jwt, Abstrac
         }
 
         // authVersion invalida i token emessi prima di logout, cambio password o future modifiche di sicurezza.
-        Long tokenAuthVersion = jwt.getClaim("authVersion");
+        Long tokenAuthVersion = extractAuthVersion(jwt);
 
-        if (tokenAuthVersion == null || tokenAuthVersion.longValue() != user.getAuthVersion()) {
+        if (tokenAuthVersion != user.getAuthVersion()) {
             throw new BadCredentialsException("Invalid token");
         }
 
@@ -49,5 +49,37 @@ public class AirportJwtAuthenticationConverter implements Converter<Jwt, Abstrac
                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
 
         return new JwtAuthenticationToken(jwt, authorities, user.getId().toString());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+
+    private UUID extractUserId(Jwt jwt) {
+        // così controlliamo il tipo effettivo del valore
+        Object subjectClaim = jwt.getClaims().get("sub");
+
+        if (!(subjectClaim instanceof String subject) || subject.isBlank()) {
+            throw new BadCredentialsException("Invalid token");
+        }
+
+        try {
+            return UUID.fromString(subject); // -> qui tenta la conversione
+            // catch trasforma il formato non valido in un errore di autenticazione, conservando la causa per la diagnosi interna
+        } catch (IllegalArgumentException exception) {
+            throw new BadCredentialsException("Invalid token", exception);
+        }
+    }
+
+    private long extractAuthVersion(Jwt jwt) {
+        Object claim = jwt.getClaims().get("authVersion");
+
+        if(claim instanceof Long version && version >= 0) {
+            return version;
+        }
+
+        if (claim instanceof Integer version && version >=0) {
+            return version.longValue();
+        }
+
+        throw new BadCredentialsException("Invalid token");
     }
 }

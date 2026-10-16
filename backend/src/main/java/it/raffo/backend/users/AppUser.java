@@ -104,7 +104,4 @@ public class AppUser {
         return createdAt;
     }
 
-    public void incrementAuthVersion() {
-        this.authVersion++;
-    }
 }

@@ -94,20 +94,16 @@ public class AuthService {
     }
 
     /**
-     *
-     * Transactional perché stai modificando una entity già gestita da JPA, dentro una transazione Hibernate rileva
-     * il cambio di authVersion e fa l'UPDATE al commit, anche senza chiamare esplicitamente save.
-     *
-     *
-     * @param userId
+     * Revoca i token precedenti incrementando authVersion nel database.
+     * La transazione comprende l'aggiornamento e il relativo commit.
      */
     @Transactional
     public void logout(UUID userId) {
-        AppUser user = appUserRepository.findById(userId)
-                // se il token punta a un utente che non esiste più, trattiamo il caso come autenticazione non valida
-                .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
+        int updateRows = appUserRepository.incrementAuthVersion(userId);
 
-        user.incrementAuthVersion();
+        if(updateRows == 0) {
+            throw new InvalidCredentialsException("Invalid credentials");
+        }
     }
 
     @Transactional(readOnly = true)
