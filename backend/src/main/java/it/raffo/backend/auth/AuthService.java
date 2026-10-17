@@ -13,12 +13,14 @@ import java.util.UUID;
 import it.raffo.backend.common.DuplicateResourceException;
 import it.raffo.backend.common.InvalidCredentialsException;
 import it.raffo.backend.common.InvalidPasswordException;
-
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
+
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /**
  * Contiene la logica applicativa di autenticazione.
@@ -34,6 +36,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final TransactionTemplate changePasswordTransaction;
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "app_users_email_key";
 
     public AuthService(AppUserRepository appUserRepository,
                        PasswordEncoder passwordEncoder,
@@ -80,7 +83,23 @@ public class AuthService {
                 Instant.now()
         );
 
-        AppUser savedUser = appUserRepository.save(user);
+        AppUser savedUser;
+
+        try {
+            savedUser = appUserRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            if (isUniqueConstraintViolation(
+                    exception,
+                    EMAIL_UNIQUE_CONSTRAINT
+            )) {
+                throw new DuplicateResourceException(
+                        "Email already exists",
+                        exception
+                );
+            }
+
+            throw exception;
+        }
 
         return toResponse(savedUser);
     }
@@ -234,6 +253,30 @@ public class AuthService {
             );
         }
 
+    }
+
+    /**
+     * Un errore del DB può attraversare diversi livelli ed essere racchiusa in altre eccezioni.
+     * Per questo partiamo dalla eccezione ricevuta e percorriamo le sue cause.
+     */
+    private boolean isUniqueConstraintViolation(
+            DataIntegrityViolationException exception,
+            String expectedConstraintName
+    ) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException violation
+                    && "23505".equals(violation.getSQLState())
+                    && expectedConstraintName.equals(
+                    violation.getConstraintName()
+            )) {
+                return true;
+            }
+
+            cause = cause.getCause();
+        }
+        return false;
     }
 
 }

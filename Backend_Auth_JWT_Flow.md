@@ -1,8 +1,10 @@
 # Autenticazione con JWT - Airport App
 
-## Stato della verifica — aggiornamento del 16 ottobre 2026
+## Stato della verifica — aggiornamento del 17 ottobre 2026
 
 L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. È stato inoltre implementato `POST /api/v1/auth/change-password`: lo sviluppatore ha confermato su Postman il cambio password, la revoca del vecchio token, l’utilizzo del nuovo token e i casi di errore descritti nella sezione Test. Nel repository è presente anche il nuovo test del caso positivo di aggiornamento password/versione. Durante questo aggiornamento l’assistente ha controllato i sorgenti senza eseguire test; le diverse verifiche sono registrate separatamente. Gli ulteriori test del cambio password sono rinviati per scelta dello sviluppatore.
+
+Il 17 ottobre è stata completata la gestione del `409 Conflict` anche quando due registrazioni superano il controllo iniziale dell’email. Lo sviluppatore ha confermato le prove manuali con Postman e PostgreSQL locale: registrazione normale `201`, email già presente `409`, due INSERT concorrenti con esiti `201` e `409` e una sola riga finale. L’assistente ha controllato il codice senza eseguire o aggiungere test automatici per questa modifica.
 
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
@@ -122,12 +124,31 @@ La policy attuale di `RegisterRequest` resta di 8–128 caratteri con `@NotBlank
 3. `AuthService.register()` normalizza l'email:
    - trim degli spazi esterni;
    - conversione in minuscolo.
-4. Il service controlla se l'email esiste gia.
+4. Il service controlla l’email con `existsByEmail()`: se è già presente, lancia `DuplicateResourceException`, gestita con `409 Conflict`.
 5. La password viene trasformata in hash tramite `PasswordEncoder`.
 6. Viene creata una entity `AppUser`.
-7. L'utente viene salvato nel database tramite `AppUserRepository`.
-8. Il backend genera un JWT.
-9. La risposta contiene dati utente essenziali e token.
+7. Il repository esegue `saveAndFlush()` dentro un `try/catch`: l’INSERT viene inviato al database prima di proseguire con la generazione del token.
+8. Se una registrazione concorrente ha inserito la stessa email, il service riconosce la violazione del relativo vincolo e lancia `DuplicateResourceException` con la causa originale. Gli altri errori di integrità vengono propagati.
+9. Se il salvataggio riesce, il backend genera un JWT e prepara la risposta con dati utente essenziali e token. Il metodo è transazionale: la risposta di successo arriva al controller dopo il commit.
+
+### Email duplicate e registrazioni concorrenti — FATTO
+
+Il controllo `existsByEmail()` intercetta un’email già presente, ma non impedisce a due richieste di trovare entrambe l’email libera prima dei rispettivi inserimenti. La protezione finale resta il vincolo univoco nel database.
+
+Nel database locale è stato verificato il vincolo `app_users_email_key`, definito come `UNIQUE (email)` e non differibile (`deferrable = false`). `AuthService` ne conserva il nome nella costante `EMAIL_UNIQUE_CONSTRAINT`.
+
+`saveAndFlush()` permette di far emergere la violazione dentro il `try/catch` del service: il flush invia le modifiche al database, ma non equivale al commit. Il vincolo non differibile viene controllato durante l’inserimento.
+
+Il metodo `isUniqueConstraintViolation()` percorre la catena delle cause di `DataIntegrityViolationException` e riconosce soltanto una `org.hibernate.exception.ConstraintViolationException` che presenti entrambe queste condizioni:
+
+- SQLSTATE `23505`, cioè violazione di unicità;
+- nome del vincolo uguale a `app_users_email_key`.
+
+In questo caso il service lancia `DuplicateResourceException("Email already exists", exception)`. Il nuovo costruttore conserva la causa originale; il gestore esistente restituisce `409 Conflict` con body `ApiErrorResponse`, messaggio `Email already exists` e `fieldErrors` vuoto. La causa tecnica non viene inserita nel JSON e il percorso di errore non genera un token.
+
+L’eccezione runtime fa eseguire il rollback della transazione di registrazione. Se il vincolo o il codice SQLSTATE non corrispondono, il service rilancia l’eccezione originale senza attribuire l’errore all’email.
+
+Il nome del vincolo deve corrispondere a quello dello schema: un’eventuale rinomina richiederà il relativo allineamento della costante. Per questo sviluppo non sono state modificate le migrazioni o le regole di accesso a `/register`.
 
 ### Esempio richiesta
 
@@ -532,10 +553,10 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 ## Cose già fatte
 
 - **FATTO** — Backend Spring Boot, Maven e Java 17.
-- **FATTO** — PostgreSQL e Liquibase configurati; migrazioni e repository verificati nei tre test su PostgreSQL 17 temporaneo, con esito positivo confermato dallo sviluppatore. Gli altri ambienti restano da verificare.
+- **FATTO** — PostgreSQL e Liquibase configurati; migrazioni e repository verificati nei tre test su PostgreSQL 17 temporaneo, con esito positivo confermato dallo sviluppatore. Le prove manuali di registrazione del 17 ottobre sono confermate sul database locale PostgreSQL 18; gli ambienti distribuiti non sono stati esaminati.
 - **FATTO** — Migrazione `app_users`, entity `AppUser`, enum `ADMIN`/`OPERATORI` e repository utenti.
 - **FATTO** — DTO register/login/me/change-password e risposta autenticazione.
-- **FATTO** — Registrazione con normalizzazione email, controllo duplicati e vincolo univoco nel database.
+- **FATTO** — Registrazione con normalizzazione email, controllo duplicati e vincolo univoco nel database. Gestione `409` anche per registrazioni concorrenti tramite `saveAndFlush()` e riconoscimento di SQLSTATE `23505`/vincolo `app_users_email_key`; causa originale conservata e altri errori propagati. Prove manuali del 17 ottobre confermate dallo sviluppatore.
 - **FATTO** — Hash password con `BCryptPasswordEncoder`.
 - **FATTO** — Login con verifica password e account attivo; errore generico per credenziali non valide.
 - **FATTO** — Emissione JWT HS256 dopo register/login e cambio password, durata 900 secondi.
@@ -555,7 +576,6 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 
 - **NON IMPLEMENTATO** — Predisposizione riservata degli account: `/register` è pubblico e accetta anche `ADMIN`. Il pannello web utenti resta rinviato.
 
-- **PARZIALE** — Garantire `409` anche per violazioni del vincolo univoco causate da registrazioni concorrenti.
 - **DA VERIFICARE** — Automatizzare le risposte HTTP 401/403 già provate manualmente; completare la verifica di token scaduti e con firma alterata. I test del converter non attraversano la catena HTTP.
 - **DA VERIFICARE** — `Cache-Control: no-store` su login e register: già osservato nelle risposte 401 riportate durante le prove, ma non ancora registrato per tutte le risposte di autenticazione.
 
@@ -588,7 +608,7 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 
 La registrazione temporanea citata precedentemente non è una funzionalità del prodotto previsto: l’analisi richiede una procedura tecnica riservata. La sicurezza frontend non sostituisce quella backend.
 
-### Test — stato al 16 ottobre 2026
+### Test — stato al 17 ottobre 2026
 
 #### Test automatici del converter — FATTO
 
@@ -669,10 +689,28 @@ Queste sono verifiche manuali dichiarate dallo sviluppatore, non esecuzioni auto
 
 **Ulteriori test del cambio password rinviati per scelta dello sviluppatore:** la copertura automatica attuale comprende il nuovo caso positivo del repository presente nei sorgenti. I casi di rifiuto della query, la concorrenza del cambio password, la validazione completa, il rollback e i controlli HTTP automatici non sono stati aggiunti o eseguiti in questa revisione.
 
+#### Registrazione: duplicati e concorrenza — FATTO, prove manuali del 17 ottobre 2026
+
+Lo sviluppatore ha confermato l’esito positivo delle seguenti prove con Postman e PostgreSQL locale; l’assistente non le ha eseguite direttamente.
+
+| Scenario | Risultato confermato |
+| --- | --- |
+| Registrazione con email inizialmente libera | `201 Created`, dati utente e token |
+| Ripetizione della richiesta con la stessa email già registrata | `409 Conflict`, messaggio `Email already exists`, nessun token |
+| Conteggio dopo le richieste sequenziali | Una sola riga per l’email usata |
+| Due richieste con la stessa email inizialmente libera, entrambe arrivate all’INSERT | Due INSERT osservati in attesa del lock |
+| Rilascio del lock e completamento delle due registrazioni | Una risposta `201` con token e una `409` con `Email already exists`, senza token |
+| Conteggio dopo le richieste concorrenti | Una sola riga per l’email usata |
+
+Per coordinare la prova concorrente è stata mantenuta aperta una transazione SQL con `LOCK TABLE app_users IN SHARE MODE`: le letture potevano proseguire, mentre gli INSERT rimanevano in attesa. Due richieste Postman hanno così superato il controllo iniziale. Gli INSERT sono stati osservati tramite `pg_stat_activity`, quindi il `COMMIT` della transazione di controllo ha rilasciato il blocco e consentito il completamento delle richieste.
+
+La ripetizione sequenziale verifica `existsByEmail()`; la prova con entrambi gli INSERT in attesa verifica invece il percorso di gestione della violazione del vincolo. Il lock è stato usato soltanto per coordinare la prova locale e non fa parte del codice applicativo.
+
+Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei duplicati concorrenti. La propagazione degli altri errori di integrità è presente nel codice, ma non è stata verificata con una prova dedicata in questa revisione. I risultati automatici storici del converter e del repository restano quelli registrati nelle rispettive sezioni.
+
 #### Scenari ancora DA VERIFICARE
 
 - Test HTTP automatici di 401/403, content type, body JSON e header Bearer.
-- Email duplicata: `409`, anche con registrazioni concorrenti.
 - Login con email inesistente o account disattivato e ulteriori casi di password errata: `401` generico, nessun token. Il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
 - Token ADMIN: ping ADMIN `200`, ping OPERATORI `403`; non dedurre questa verifica HTTP dai test unitari dei ruoli.
 - Token con firma alterata o scaduto: `401`; issuer/audience errati dopo i relativi controlli, ancora da implementare.
@@ -684,9 +722,10 @@ Queste sono verifiche manuali dichiarate dallo sviluppatore, non esecuzioni auto
 
 1. **FATTO per gli scenari registrati** — Errori JSON 401/403, controlli dei claim e 20 casi del converter; incremento atomico di `authVersion`, tre test PostgreSQL del repository e prova Postman di revoca di due token su `/me`.
 2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
-3. Prossimi sviluppi backend auth: predisposizione riservata degli account, validazione JWT e allineamento della policy di registrazione. Le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
-4. Sviluppare login e landing Angular.
-5. Sviluppare database, backend e frontend di modelli di aereo e tratte.
+3. **FATTO per gli scenari registrati** — `409` per email già presente e per violazione del vincolo causata da registrazioni concorrenti; prove Postman/SQL del 17 ottobre confermate con esiti `201`/`409` e una sola riga finale. Nessun nuovo test automatico aggiunto o eseguito.
+4. Prossimi sviluppi backend auth: predisposizione riservata degli account, validazione JWT e allineamento della policy di registrazione. Le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
+5. Sviluppare login e landing Angular.
+6. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
 Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo. Le precedenti eccezioni autorizzate per la scrittura assistita di test restano riferite a quelle attività. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 
