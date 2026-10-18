@@ -7,6 +7,7 @@ import { AuthSession } from './auth-session';
 import type {
   AuthResponse,
   LoginRequest,
+  RegisterRequest,
   UserProfile
 } from './auth.model';
 
@@ -23,6 +24,17 @@ export class AuthService {
       request
     ).pipe(
       tap(response => this.authSession.setSession(response))
+    );
+  }
+
+  /**
+   * Il metodo riceve i dati del form e prepara una richiesta POST
+   * @param request
+   */
+  register(request: RegisterRequest): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(
+      '/api/v1/auth/register',
+      request
     );
   }
 

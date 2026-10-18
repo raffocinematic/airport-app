@@ -6,14 +6,14 @@ import {
 } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../core/auth/auth-service';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './login.html',
   styleUrl: './login.scss'
 })
@@ -29,6 +29,11 @@ export class Login {
   readonly errorMessage = signal(
     this.route.snapshot.queryParamMap.get('reason') === 'session-expired'
       ? 'La sessione è scaduta o non è più valida. Accedi nuovamente.'
+      : ''
+  );
+  readonly successMessage = signal(
+    this.route.snapshot.queryParamMap.get('registered') === 'true'
+      ? 'Registrazione completata. Ora puoi accedere.'
       : ''
   );
 
@@ -61,6 +66,7 @@ export class Login {
     }
 
     this.errorMessage.set('');
+    this.successMessage.set('');
     this.normalizeEmail();
     this.form.markAllAsTouched();
 

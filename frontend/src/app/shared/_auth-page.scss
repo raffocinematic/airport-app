@@ -1,0 +1,238 @@
+@mixin page($card-selector, $card-width: 30rem) {
+  :host {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100svh;
+    padding: clamp(1.25rem, 4vw, 3rem) 1rem;
+    box-sizing: border-box;
+    color: #17364f;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(ellipse at 8% 12%, #ffffffd9 0%, transparent 45%),
+      radial-gradient(ellipse at 95% 90%, #7dd3fc66 0%, transparent 50%),
+      linear-gradient(135deg, #effaff, #dcefff 55%, #cce9fb);
+  }
+
+  #{$card-selector} {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: $card-width;
+    margin: 0;
+    padding: clamp(1.5rem, 4vw, 2.5rem);
+    border: 1px solid #d8eaf5;
+    border-top: 4px solid #38bdf8;
+    border-radius: 1.5rem;
+    background: #ffffff;
+    box-shadow:
+      0 24px 64px -24px #07598540,
+      0 4px 16px #0759850a;
+  }
+
+  .auth-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 1.75rem;
+  }
+
+  .auth-brand__icon {
+    display: grid;
+    flex: 0 0 3rem;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.9rem;
+    color: #ffffff;
+    background: linear-gradient(135deg, #0ea5e9, #0369a1);
+    box-shadow: 0 6px 16px #0284c733;
+  }
+
+  .auth-brand__icon svg {
+    width: 1.75rem;
+    height: 1.75rem;
+    fill: currentColor;
+    transform: rotate(35deg);
+  }
+
+  .auth-brand__name {
+    color: #075985;
+    font-size: 0.8rem;
+    font-weight: 750;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0 0 0.65rem;
+    color: #12344e;
+    font-size: clamp(1.6rem, 4vw, 1.95rem);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.035em;
+    overflow-wrap: anywhere;
+  }
+
+  #{$card-selector} > h1 + p:not([role]) {
+    margin: 0;
+    color: #526c80;
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+
+  label {
+    margin-top: 0.8rem;
+    color: #234b66;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  form > label:first-child {
+    margin-top: 0;
+  }
+
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 3rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid #bed5e5;
+    border-radius: 0.75rem;
+    color: #17364f;
+    background: #f7fbff;
+    font: inherit;
+    transition: border-color 160ms, background-color 160ms;
+  }
+
+  input:hover:not(:disabled) {
+    border-color: #7cb9d9;
+  }
+
+  input:focus-visible {
+    border-color: #0284c7;
+    outline: 3px solid #bae6fd;
+    outline-offset: 2px;
+    background: #ffffff;
+  }
+
+  input.ng-invalid.ng-touched:not(:disabled) {
+    border-color: #c24152;
+    background: #fffafb;
+  }
+
+  input:disabled {
+    cursor: wait;
+    opacity: 0.7;
+  }
+
+  button {
+    min-height: 3rem;
+    margin-top: 1.2rem;
+    padding: 0.85rem 1.25rem;
+    border: 0;
+    border-radius: 0.75rem;
+    color: #ffffff;
+    background: linear-gradient(135deg, #0378b5, #0369a1);
+    box-shadow: 0 6px 14px #0284c729;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+    transition: box-shadow 160ms, transform 160ms;
+  }
+
+  button:hover:not(:disabled) {
+    box-shadow: 0 8px 20px #0369a140;
+    transform: translateY(-1px);
+  }
+
+  button:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 3px solid #0284c7;
+    outline-offset: 4px;
+  }
+
+  button:disabled {
+    box-shadow: none;
+    cursor: wait;
+    opacity: 0.6;
+  }
+
+  .field-error,
+  .success-message {
+    margin: 0;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid #fecdd3;
+    border-radius: 0.6rem;
+    color: #9f1239;
+    background: #fff1f2;
+    font-size: 0.825rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .success-message {
+    margin-top: 1rem;
+    border-color: #bbdfd0;
+    color: #166534;
+    background: #f0fdf4;
+  }
+
+  #{$card-selector} > p:last-child {
+    margin: 1.75rem 0 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e2edf5;
+    color: #526c80;
+    font-size: 0.9rem;
+    line-height: 1.65;
+    text-align: center;
+  }
+
+  a {
+    border-radius: 0.15rem;
+    color: #0369a1;
+    font-weight: 650;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  a:hover {
+    color: #075985;
+  }
+
+  @media (max-width: 480px) {
+    :host {
+      padding: 1rem 0.75rem;
+    }
+
+    #{$card-selector} {
+      border-radius: 1.1rem;
+    }
+
+    .auth-brand {
+      margin-bottom: 1.4rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    input,
+    button {
+      transition: none;
+    }
+
+    button:hover:not(:disabled) {
+      transform: none;
+    }
+  }
+}

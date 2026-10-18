@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import it.raffo.backend.users.Role;
 
 /**
  * Contiene la logica applicativa di autenticazione.
@@ -54,10 +55,7 @@ public class AuthService {
     }
 
     /**
-     * Registra un nuovo utente tecnico dell'applicazione.
-     * <p>
-     * In questa fase non è una registrazione pubblica: serve a creare utenti
-     * ADMIN e OPERATORI per testare login e permessi.
+     * Registra un nuovo utente tecnico dell'applicazione. Come OPERATORE
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -77,7 +75,7 @@ public class AuthService {
                 normalizedEmail,
                 // Salviamo solo l'hash della password, mai la password in chiaro.
                 passwordEncoder.encode(request.password()),
-                request.role(),
+                Role.OPERATORI,
                 true,
                 0L,
                 Instant.now()

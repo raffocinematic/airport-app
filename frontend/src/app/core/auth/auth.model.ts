@@ -5,6 +5,16 @@ export interface LoginRequest {
   password: string;
 }
 
+/**
+ * Questa interfaccia descrive il JSON da inviare al BE.
+ */
+export interface RegisterRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}
+
 export interface UserProfile {
   userId: string;
   firstName: string;
