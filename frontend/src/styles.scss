@@ -3,3 +3,129 @@
 body {
   margin: 0;
 }
+
+// Queste regole si applicano soltanto alle transizioni login/registrazione.
+:root:is(
+  :active-view-transition-type(auth-forward),
+  :active-view-transition-type(auth-backward)
+) {
+  // Evita la dissolvenza predefinita dello sfondo.
+  &::view-transition-old(root) {
+    animation: none;
+    opacity: 0;
+  }
+
+  &::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  // Accompagna il cambiamento di posizione e dimensioni della scheda.
+  &::view-transition-group(auth-card) {
+    animation-duration: 650ms;
+    animation-timing-function: ease-in-out;
+  }
+
+  // Impostazioni comuni alle due rappresentazioni del form.
+  &::view-transition-old(auth-card),
+  &::view-transition-new(auth-card) {
+    animation-duration: 325ms;
+    animation-timing-function: ease-in-out;
+    animation-fill-mode: both;
+    backface-visibility: hidden;
+    mix-blend-mode: normal;
+  }
+
+  &::view-transition-old(auth-card) {
+    z-index: 2;
+  }
+
+  &::view-transition-new(auth-card) {
+    animation-delay: 325ms;
+    z-index: 1;
+  }
+
+  // Login → registrazione.
+  &:active-view-transition-type(auth-forward) {
+    &::view-transition-old(auth-card) {
+      transform-origin: left center;
+      animation-name: book-forward-out;
+    }
+
+    &::view-transition-new(auth-card) {
+      transform-origin: left center;
+      animation-name: book-forward-in;
+    }
+  }
+
+  // Registrazione → login.
+  &:active-view-transition-type(auth-backward) {
+    &::view-transition-old(auth-card) {
+      transform-origin: right center;
+      animation-name: book-backward-out;
+    }
+
+    &::view-transition-new(auth-card) {
+      transform-origin: right center;
+      animation-name: book-backward-in;
+    }
+  }
+
+  // Protezione aggiuntiva per chi preferisce movimento ridotto.
+  @media (prefers-reduced-motion: reduce) {
+    &::view-transition-group(auth-card),
+    &::view-transition-old(auth-card),
+    &::view-transition-new(auth-card) {
+      animation-duration: 1ms;
+      animation-delay: 0ms;
+    }
+  }
+}
+
+@keyframes book-forward-out {
+  from {
+    transform: perspective(1200px) rotateY(0deg);
+    filter: brightness(1);
+  }
+
+  to {
+    transform: perspective(1200px) rotateY(-90deg);
+    filter: brightness(0.85);
+  }
+}
+
+@keyframes book-forward-in {
+  from {
+    transform: perspective(1200px) rotateY(90deg);
+    filter: brightness(0.85);
+  }
+
+  to {
+    transform: perspective(1200px) rotateY(0deg);
+    filter: brightness(1);
+  }
+}
+
+@keyframes book-backward-out {
+  from {
+    transform: perspective(1200px) rotateY(0deg);
+    filter: brightness(1);
+  }
+
+  to {
+    transform: perspective(1200px) rotateY(90deg);
+    filter: brightness(0.85);
+  }
+}
+
+@keyframes book-backward-in {
+  from {
+    transform: perspective(1200px) rotateY(-90deg);
+    filter: brightness(0.85);
+  }
+
+  to {
+    transform: perspective(1200px) rotateY(0deg);
+    filter: brightness(1);
+  }
+}

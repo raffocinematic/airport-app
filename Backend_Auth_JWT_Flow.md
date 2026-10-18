@@ -12,6 +12,8 @@ Sono stati inoltre applicati il restyling azzurro e l’icona SVG dell’aereo. 
 
 Sono state successivamente completate la landing comune `/home` e l’uscita dal frontend. L’intestazione mostra nome e ruolo a sinistra, Airport App centrato e Logout a destra; la scheda centrale contiene l’illustrazione SVG dell’aereo in costruzione. Lo sviluppatore ha confermato le prove guidate: logout con backend attivo e risposta `204`, ritorno alla login senza avviso; uscita locale con backend spento e avviso di revoca non confermata; nuova login dopo il riavvio. Il timeout di 10 secondi è configurato nel codice, ma non è stata confermata una prova dedicata di una richiesta lasciata in attesa fino al timeout. Questo aggiornamento documentale non esegue nuovi build o test.
 
+È stata inoltre completata la transizione “sfoglia libro” tra login e registrazione: View Transitions del router Angular e animazioni SCSS globali fanno ruotare le schede con prospettiva e ombreggiatura, in avanti verso la registrazione e nel verso opposto tornando alla login. Lo sviluppatore ne ha confermato il funzionamento manuale. L’assistente ha verificato separatamente la compilazione SCSS dei tre fogli interessati, senza eseguire un nuovo build Angular completo o test automatici per questa modifica. Movimento ridotto e fallback di compatibilità sono presenti nel codice, ma non hanno una prova dedicata registrata per la nuova animazione.
+
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
 - **NON IMPLEMENTATO**: assente nei sorgenti esaminati.
@@ -623,6 +625,8 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Logout frontend con richiesta autenticata, uscita locale anche in caso di errore, messaggio di revoca non confermata e timeout configurato a 10 secondi. Prove con backend attivo e spento confermate dallo sviluppatore; prova dedicata del timeout ancora da verificare.
 - **FATTO** — Restyling azzurro di login e registrazione, icona SVG dell’aereo e stili SCSS condivisi. Build senza avvisi e verifiche grafiche desktop/mobile svolti dall’assistente nella precedente attività; i 9 test frontend restano un’esecuzione storica distinta.
 
+- **FATTO** — Animazione “sfoglia libro” tra login e registrazione, con verso opposto al ritorno, durata totale di 650 ms e stile azzurro mantenuto. Funzionamento confermato manualmente dallo sviluppatore; compilazione SCSS verificata dall’assistente. Nessuna nuova dipendenza o modifica alle API.
+
 ## Cose da fare a breve
 
 ### Backend auth
@@ -651,6 +655,10 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 - **NON IMPLEMENTATO** — Modulo `routes`, tabella `routes`, GET/POST `/api/v1/routes` solo ADMIN.
 
 ### Frontend minimo
+
+- **FATTO** — Animazione “sfoglia libro” tra `/login` e `/registrazione`. In `frontend/src/app/app.config.ts`, `withViewTransitions` salta la prima navigazione e distingue `auth-forward` da `auth-backward`, leggendo i percorsi delle rotte: il parametro `registered=true` non impedisce il ritorno animato alla login dopo la registrazione. Le altre coppie di rotte non vengono animate. L’integrazione Angular utilizzata è in developer preview.
+- **FATTO** — Il mixin in `frontend/src/app/shared/_auth-page.scss` assegna `view-transition-name: auth-card` a entrambe le schede. Gli stili globali in `frontend/src/styles.scss` animano le rappresentazioni precedente e successiva con prospettiva di 1200 px, rotazione sull’asse verticale, bordo di rotazione sinistro in avanti e destro al ritorno, e leggera ombreggiatura. La scheda uscente ruota per 325 ms, quella entrante per altri 325 ms; viene disattivata la dissolvenza predefinita dello sfondo. Le dimensioni diverse dei due form sono accompagnate dalla transizione del gruppo.
+- **FATTO nel codice** — Se è richiesto movimento ridotto, l’animazione viene saltata; gli SCSS includono anche una protezione dedicata. Se manca la View Transitions API, Angular mantiene la normale navigazione; se mancano i tipi di transizione o il selettore CSS richiesto, il callback salta l’effetto. Nessuna dipendenza aggiunta, nessuna modifica ai contratti backend; le prove dedicate di compatibilità e movimento ridotto per questa animazione restano da verificare.
 
 - **FATTO** — Template iniziale sostituito con `router-outlet`; route pubbliche `/login` e `/registrazione`, route protette `/home` e `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
 - **FATTO** — Pagina login con form reattivo, validazione email/password, rimozione degli spazi esterni dall’email, stato di caricamento e blocco degli invii ripetuti. Gestione degli errori di credenziali, validazione, rete e servizio; password svuotata dopo il successo e navigazione a `/home`.
@@ -826,6 +834,12 @@ Lo sviluppatore ha completato la home con illustrazione visibile e ha confermato
 
 L’assistente ha controllato i sorgenti e guidato le prove; non ha eseguito queste richieste al backend né arrestato o avviato il processo dello sviluppatore. La prova con backend spento verifica la gestione dell’errore di connessione e non dimostra l’intervento del timeout: il limite di 10 secondi è presente nel codice, ma non è stata registrata una richiesta mantenuta in attesa per tutta la durata prevista.
 
+#### Animazione login/registrazione — FATTO per gli scenari registrati
+
+Il 18 ottobre lo sviluppatore ha dichiarato funzionante la transizione dopo le prove guidate nel browser. La conferma registra il funzionamento manuale dell’effetto tra login e registrazione nei due versi; non costituisce un test automatico o una verifica su tutti i browser.
+
+L’assistente ha controllato il collegamento tra callback del router, nome condiviso delle schede e selettori globali. Ha inoltre compilato in memoria con Sass `src/styles.scss`, `src/app/login/login.scss` e `src/app/register/register.scss`, dalla cartella `frontend`: tutti e tre i fogli compilano senza errori. Questa verifica riguarda gli SCSS e non equivale a un nuovo `npm.cmd run build`, a test automatici Angular o a una verifica visiva eseguita dall’assistente. Non sono state aggiunte nuove prove automatiche per l’animazione; i risultati storici già riportati restano separati.
+
 #### Frontend: scenari specifici ancora DA VERIFICARE
 
 La conferma del flusso principale non attesta una nuova prova dettagliata di ogni caso di errore o di sessione. Restano senza una conferma manuale specifica nel browser:
@@ -839,6 +853,7 @@ La conferma del flusso principale non attesta una nuova prova dettagliata di ogn
 - Logout con richiesta lasciata in attesa fino al timeout di 10 secondi: uscita locale con avviso di revoca non confermata.
 - Logout che riceve `401` e risposta tardiva del logout dopo una nuova sessione: coordinamento fra interceptor e Home e protezione del nuovo token, presenti nel codice ma senza una prova manuale dedicata registrata.
 - Verifica dedicata della home a 320 px e con nomi molto lunghi; le precedenti verifiche grafiche dell’assistente riguardavano login e registrazione.
+- Animazione login/registrazione: prove dedicate con movimento ridotto e browser privi delle API o dei selettori richiesti; i percorsi di fallback sono presenti nel codice. Il ritorno dopo una registrazione riuscita con `registered=true` è previsto dalla selezione delle rotte, ma non è stato confermato separatamente per la nuova animazione.
 
 Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; questi scenari sono distinti dal completamento concordato del flusso minimo.
 
@@ -860,8 +875,9 @@ Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; qu
 4. Prossimi sviluppi backend auth: automazione della predisposizione riservata degli ADMIN, validazione JWT e allineamento della policy di registrazione. La procedura manuale del primo ADMIN è già confermata; le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
 5. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria e Bearer alle API. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Build, controlli grafici e 9 test frontend del precedente restyling restano risultati storici distinti, non nuove esecuzioni sulla home o sul logout.
 6. **FATTO per gli scenari registrati** — Landing comune `/home` protetta, illustrazione dell’aereo in costruzione, intestazione con utente a sinistra, marchio centrato e Logout a destra. Logout frontend con uscita locale e avviso quando la revoca non è confermata; prove con backend attivo e spento confermate. Timeout configurato a 10 secondi, con prova dedicata ancora da verificare. `/profilo` resta disponibile separatamente.
-7. Prossimi sviluppi frontend: aree distinte ADMIN/OPERATORI con menu amministrativo e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata. Ulteriori test automatici rinviati per scelta dello sviluppatore.
-8. Sviluppare database, backend e frontend di modelli di aereo e tratte.
+7. **FATTO per gli scenari registrati** — Animazione “sfoglia libro” tra login e registrazione, con verso opposto al ritorno, View Transitions e SCSS globali, durata di 650 ms e nessuna nuova dipendenza. Funzionamento manuale confermato dallo sviluppatore e compilazione SCSS verificata dall’assistente; compatibilità e movimento ridotto presenti nel codice, con prove dedicate ancora da verificare.
+8. Prossimi sviluppi frontend: aree distinte ADMIN/OPERATORI con menu amministrativo e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata. Ulteriori test automatici rinviati per scelta dello sviluppatore.
+9. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
 Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo, salvo le eccezioni esplicitamente autorizzate: test e restyling delle pagine di autenticazione. La predisposizione del primo ADMIN è stata eseguita e confermata dallo sviluppatore. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 
