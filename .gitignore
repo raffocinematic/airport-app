@@ -17,3 +17,9 @@ frontend/.angular/
 
 # Log
 *.log
+
+# Dipendenze e risultati dei test Playwright
+test-automation/node_modules/
+test-automation/test-results/
+test-automation/playwright-report/
+test-automation/blob-report/
