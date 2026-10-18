@@ -17,9 +17,10 @@
 }
 
 .home-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: 'welcome brand logout';
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.5rem;
   border: 1px solid #d8eaf5;
@@ -29,6 +30,8 @@
 }
 
 .home-brand {
+  grid-area: brand;
+  justify-self: center;
   color: #075985;
   font-size: 0.85rem;
   font-weight: 750;
@@ -37,9 +40,9 @@
 }
 
 .user-welcome {
+  grid-area: welcome;
   min-width: 0;
-  max-width: 70%;
-  text-align: right;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 
@@ -140,14 +143,27 @@ button:focus-visible {
   margin: 0 auto 1.5rem;
 }
 
-@media (max-width: 480px) {
-  .home-header {
-    flex-wrap: wrap;
-    padding: 1rem;
-  }
+.logout-button {
+  grid-area: logout;
+  justify-self: end;
+  max-width: 100%;
+}
 
-  .user-welcome {
-    max-width: 100%;
-    margin-left: auto;
+button:hover:not(:disabled) {
+  background: #075985;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+  .home-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand brand'
+      'welcome logout';
+    padding: 1rem;
   }
 }

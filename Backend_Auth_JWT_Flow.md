@@ -6,9 +6,11 @@ L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono 
 
 Il 17 ottobre è stata completata la gestione del `409 Conflict` anche quando due registrazioni superano il controllo iniziale dell’email. Lo sviluppatore ha confermato le prove manuali con Postman e PostgreSQL locale: registrazione normale `201`, email già presente `409`, due INSERT concorrenti con esiti `201` e `409` e una sola riga finale. L’assistente ha controllato il codice senza eseguire o aggiungere test automatici per questa modifica.
 
-Il 18 ottobre sono stati completati backend e frontend del flusso minimo di login e registrazione. La registrazione pubblica crea soltanto OPERATORI: il ruolo non fa parte della richiesta ed è assegnato dal server. La pagina `/registrazione` torna alla login con una conferma, senza salvare il token restituito; la login conserva il token soltanto in memoria e apre `/profilo`, protetto da guard. Lo sviluppatore ha confermato il funzionamento del flusso principale e la predisposizione manuale del primo ADMIN con Postman e pgAdmin, seguita da nuova login e ping ADMIN riuscito.
+Il 18 ottobre sono stati completati backend e frontend del flusso minimo di login e registrazione. La registrazione pubblica crea soltanto OPERATORI: il ruolo non fa parte della richiesta ed è assegnato dal server. La pagina `/registrazione` torna alla login con una conferma, senza salvare il token restituito; la login conserva il token soltanto in memoria e apre la landing comune `/home`, protetta da guard. La pagina `/profilo` resta disponibile separatamente. Lo sviluppatore ha confermato il funzionamento del flusso principale e la predisposizione manuale del primo ADMIN con Postman e pgAdmin, seguita da nuova login e ping ADMIN riuscito.
 
 Sono stati inoltre applicati il restyling azzurro e l’icona SVG dell’aereo. Nella precedente attività l’assistente ha completato il build senza avvisi e verificato in una preview locale desktop/mobile impaginazione, messaggi, focus da tastiera, stato disabilitato e movimento ridotto. I 9 test frontend superati appartengono alla precedente esecuzione, distinta da queste verifiche grafiche. Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; gli scenari specifici non confermati sono indicati separatamente. Questo aggiornamento modifica soltanto la documentazione e non esegue nuovi test.
+
+Sono state successivamente completate la landing comune `/home` e l’uscita dal frontend. L’intestazione mostra nome e ruolo a sinistra, Airport App centrato e Logout a destra; la scheda centrale contiene l’illustrazione SVG dell’aereo in costruzione. Lo sviluppatore ha confermato le prove guidate: logout con backend attivo e risposta `204`, ritorno alla login senza avviso; uscita locale con backend spento e avviso di revoca non confermata; nuova login dopo il riavvio. Il timeout di 10 secondi è configurato nel codice, ma non è stata confermata una prova dedicata di una richiesta lasciata in attesa fino al timeout. Questo aggiornamento documentale non esegue nuovi build o test.
 
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
@@ -17,7 +19,7 @@ Sono stati inoltre applicati il restyling azzurro e l’icona SVG dell’aereo. 
 
 ## Obiettivo
 
-Questo documento descrive lo stato attuale del backend per autenticazione, registrazione pubblica OPERATORI, predisposizione riservata del primo ADMIN, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`, insieme al frontend minimo di login, registrazione e consultazione del profilo autenticato.
+Questo documento descrive lo stato attuale del backend per autenticazione, registrazione pubblica OPERATORI, predisposizione riservata del primo ADMIN, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`, insieme al frontend di login, registrazione, landing comune con logout e consultazione separata del profilo autenticato.
 
 La priorita attuale e avere un flusso minimo funzionante:
 
@@ -398,6 +400,18 @@ Alla richiesta successiva il converter rifiuta i token con versione precedente: 
 
 **FATTO — incremento atomico:** i tre test di integrazione del repository, confermati come superati dallo sviluppatore, verificano incremento singolo, due transazioni concorrenti con risultato `5 -> 7` e utente inesistente. La prova concorrente attende entrambi i commit prima della lettura finale; gli scenari HTTP restano verifiche distinte.
 
+### Logout frontend — FATTO per gli scenari registrati
+
+Dalla home il pulsante Logout chiama `AuthService.logout()`: `POST /api/v1/auth/logout` con body nullo e risposta attesa `204 No Content`. Il token resta disponibile quando parte la richiesta, affinché l’interceptor aggiunga il Bearer. Il servizio applica `timeout(10_000)`.
+
+`Home.loggingOut` impedisce invii ripetuti, disabilita i pulsanti Logout e Riprova e mostra “Uscita…”. Il caricamento del profilo non può essere avviato mentre si sta uscendo. La richiesta di logout, limitata dal timeout, viene lasciata terminare anche se la Home viene chiusa.
+
+Al successo la Home cancella la sessione locale e naviga a `/login` con `replaceUrl: true`. In caso di errore, incluso un `401`, o di timeout, cancella comunque la sessione locale e naviga a `/login?reason=logout-unconfirmed`. La login mostra: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” L’avviso viene rimosso all’inizio di un nuovo tentativo di accesso. L’uscita locale non prova che il server abbia eseguito la revoca.
+
+Sul `401` del logout l’interceptor cancella il token corrente ma lascia la navigazione alla Home, evitando il doppio reindirizzamento con motivo `session-expired`. Per le altre API conserva il comportamento precedente. La Home confronta inoltre il token della richiesta con quello corrente: una risposta tardiva non cancella una nuova sessione con token diverso.
+
+Il comportamento backend resta quello descritto sopra: un logout riuscito revoca tutti i token precedenti dello stesso utente, anche quelli delle altre sessioni. Le prove manuali confermate e gli scenari residui sono registrati nella sezione Test.
+
 ## Cambio password — FATTO
 
 Endpoint autenticato, disponibile sia ad ADMIN sia a OPERATORI:
@@ -604,7 +618,9 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Controlli espliciti di subject e tipo/valore di `authVersion`, con rifiuto tramite `BadCredentialsException`.
 - **FATTO** — 20 casi del converter superati con JDK 17; tre test di integrazione PostgreSQL con esito positivo confermato dallo sviluppatore. Esecuzioni e limiti distinti nella sezione Test.
 
-- **FATTO** — Frontend Angular con login, registrazione pubblica OPERATORI, token della login solo in memoria, interceptor Bearer e pagina `/profilo` protetta. Flusso principale confermato dallo sviluppatore; dopo la registrazione si torna alla login senza salvare il token ricevuto.
+- **FATTO** — Frontend Angular con login, registrazione pubblica OPERATORI, token della login solo in memoria, interceptor Bearer e landing comune `/home` protetta; `/profilo` resta una pagina separata. Flusso principale confermato dallo sviluppatore; dopo la registrazione si torna alla login senza salvare il token ricevuto.
+- **FATTO** — Home con tema azzurro condiviso, benvenuto e ruolo a sinistra, marchio centrato, Logout a destra e illustrazione centrale dell’aereo in costruzione.
+- **FATTO** — Logout frontend con richiesta autenticata, uscita locale anche in caso di errore, messaggio di revoca non confermata e timeout configurato a 10 secondi. Prove con backend attivo e spento confermate dallo sviluppatore; prova dedicata del timeout ancora da verificare.
 - **FATTO** — Restyling azzurro di login e registrazione, icona SVG dell’aereo e stili SCSS condivisi. Build senza avvisi e verifiche grafiche desktop/mobile svolti dall’assistente nella precedente attività; i 9 test frontend restano un’esecuzione storica distinta.
 
 ## Cose da fare a breve
@@ -636,24 +652,27 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 
 ### Frontend minimo
 
-- **FATTO** — Template iniziale sostituito con `router-outlet`; route pubbliche `/login` e `/registrazione`, route protetta `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
-- **FATTO** — Pagina login con form reattivo, validazione email/password, rimozione degli spazi esterni dall’email, stato di caricamento e blocco degli invii ripetuti. Gestione degli errori di credenziali, validazione, rete e servizio; password svuotata dopo il successo e navigazione a `/profilo`.
-- **FATTO** — `AuthService.login()` chiama `POST /api/v1/auth/login` e salva il token nella sessione; `register()` chiama `POST /api/v1/auth/register` senza salvare il token della risposta; `me()` chiama `GET /api/v1/auth/me`.
+- **FATTO** — Template iniziale sostituito con `router-outlet`; route pubbliche `/login` e `/registrazione`, route protette `/home` e `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
+- **FATTO** — Pagina login con form reattivo, validazione email/password, rimozione degli spazi esterni dall’email, stato di caricamento e blocco degli invii ripetuti. Gestione degli errori di credenziali, validazione, rete e servizio; password svuotata dopo il successo e navigazione a `/home`.
+- **FATTO** — `AuthService.login()` chiama `POST /api/v1/auth/login` e salva il token nella sessione; `register()` chiama `POST /api/v1/auth/register` senza salvare il token della risposta; `me()` chiama `GET /api/v1/auth/me`; `logout()` chiama `POST /api/v1/auth/logout` con timeout di 10 secondi.
 - **FATTO** — Pagina `/registrazione` con nome, cognome, email, password e conferma password. Validazione coerente con il DTO e controllo della coincidenza delle password; normalizzazione degli spazi esterni di nome, cognome ed email, senza alterare le password. La richiesta HTTP esclude conferma password e ruolo.
 - **FATTO** — Registrazione con stato di caricamento, blocco degli invii ripetuti e gestione di `400`, `409`, rete e servizio. Dopo il successo le password sono svuotate e si torna a `/login?registered=true`, con messaggio di conferma; collegamenti reciproci “Registrati” e “Accedi”.
 - **FATTO** — Grafica condivisa per login e registrazione: sfondo azzurro sfumato, schede bianche, pulsanti blu e icona decorativa dell’aereo in SVG. Gli SCSS dei componenti usano il mixin in `frontend/src/app/shared/_auth-page.scss`; nessuna dipendenza aggiunta. Layout adattabile, focus da tastiera visibile e rispetto della preferenza di movimento ridotto.
 - **FATTO** — Token conservato soltanto in memoria tramite `AuthSession`, senza localStorage, sessionStorage o cookie. Il refresh della pagina perde la sessione e la route protetta rimanda al login.
 - **FATTO** — Interceptor che aggiunge il Bearer soltanto alle richieste della stessa origine con percorso `/api/v1/`, escludendo login e register. Nessun token aggiunto a domini esterni o percorsi diversi.
-- **FATTO** — Pagina comune `/profilo` con dati reali di nome, email e ruolo ottenuti da `/me`, caricamento, messaggi di errore e pulsante per aggiornare il profilo.
-- **FATTO** — Guard della route `/profilo`: accesso consentito in presenza di token, altrimenti reindirizzamento al login. La presenza del token non ne dimostra la validità: la verifica effettiva resta al backend.
-- **FATTO** — Un `401` su una richiesta autenticata cancella la sessione corrente e rimanda al login con messaggio di sessione scaduta o non valida. Un `403` conserva la sessione. Il `401` tardivo di una richiesta con token precedente non cancella una nuova sessione con token diverso; l’errore viene comunque propagato al chiamante.
+- **FATTO** — Landing comune `/home` per entrambi i ruoli, con nome e ruolo ottenuti da `/me`, caricamento ed errore con possibilità di riprovare. Il nome è dinamico; il ruolo viene visualizzato come Admin o Operatore. Intestazione a tre colonne su desktop e a due righe sotto 640 px.
+- **FATTO** — Scheda centrale “Lavori in corso” con illustrazione locale in `frontend/public/illustration/airport-work-in-progress.svg`: aereo in costruzione, gru e barriere da cantiere. Il template usa `/illustration/airport-work-in-progress.svg`, con testo alternativo e dimensioni adattabili. Il mixin `canvas` di `frontend/src/app/shared/app-theme.scss` condivide sfondo, colore del testo e caratteri tra home, login e registrazione.
+- **FATTO** — Pagina separata `/profilo` con dati reali di nome, email e ruolo ottenuti da `/me`, caricamento, messaggi di errore e pulsante per aggiornare il profilo.
+- **FATTO** — Guard delle route `/home` e `/profilo`: accesso consentito in presenza di token, altrimenti reindirizzamento al login. La presenza del token non ne dimostra la validità: la verifica effettiva resta al backend.
+- **FATTO** — Un `401` su una richiesta autenticata cancella la sessione corrente; per le API diverse dal logout l’interceptor rimanda alla login con motivo `session-expired`, mentre per il logout la navigazione è gestita dalla Home. Un `403` conserva la sessione. Il `401` tardivo di una richiesta con token precedente non cancella una nuova sessione con token diverso; l’errore viene comunque propagato al chiamante.
+- **FATTO** — Pulsante Logout, stato “Uscita…”, uscita locale e ritorno alla login con sostituzione della voce corrente nella cronologia. Se la revoca non è confermata compare l’avviso ambrato nella login; dettagli nella sezione Logout frontend.
 - **PARZIALE** — Gestione della scadenza: rilevata alla successiva risposta `401` del backend. Non è implementata una verifica preventiva o un timer che interrompa la sessione mentre l’utente non effettua richieste.
-- **PARZIALE** — Ruolo letto e mostrato nel profilo comune; navigazione distinta a `/admin` o `/operatori` ancora **NON IMPLEMENTATA**.
+- **PARZIALE** — Ruolo letto e mostrato nella home comune e nella pagina profilo; navigazione distinta a `/admin` o `/operatori` ancora **NON IMPLEMENTATA**.
 - **NON IMPLEMENTATO** — Landing ADMIN con menu e segnaposto immagine; benvenuto OPERATORI senza menu amministrativo.
-- **NON IMPLEMENTATO** — Logout e cambio password frontend; i rispettivi endpoint backend sono già presenti.
+- **NON IMPLEMENTATO** — Cambio password frontend; il relativo endpoint backend è già presente. Il logout frontend è completato.
 - **NON IMPLEMENTATO** — Liste e form di modelli di aereo e tratte.
 
-Il flusso implementato è: login -> collegamento “Registrati” -> form di registrazione -> POST register con creazione OPERATORI -> ritorno alla login con conferma -> POST login -> token in memoria -> `/profilo` -> GET `/me` con Bearer -> visualizzazione del profilo. Il proxy descritto riguarda lo sviluppo locale; l’instradamento delle API in produzione resta da predisporre.
+Il flusso implementato è: login -> collegamento “Registrati” -> form di registrazione -> POST register con creazione OPERATORI -> ritorno alla login con conferma -> POST login -> token in memoria -> `/home` -> GET `/me` con Bearer -> visualizzazione di nome, ruolo e lavori in corso -> Logout -> uscita locale e ritorno alla login. Il proxy descritto riguarda lo sviluppo locale; l’instradamento delle API in produzione resta da predisporre.
 
 La registrazione pubblica OPERATORI è un requisito concordato il 18 ottobre e sostituisce la precedente esclusione della registrazione pubblica nell’analisi iniziale. La creazione degli ADMIN resta riservata e non è disponibile nel form. La sicurezza frontend non sostituisce quella backend.
 
@@ -759,7 +778,7 @@ Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei dup
 
 #### Frontend: build e test già eseguiti — FATTO per gli scenari registrati
 
-Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre. Nella successiva attività di restyling l’assistente ha eseguito nuovamente il build finale, con compilazione riuscita, nessun avviso sui limiti degli stili e output in `frontend/dist/frontend`. Il presente aggiornamento documentale non ripete il build.
+Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre. Nella successiva attività di restyling l’assistente ha eseguito nuovamente il build finale, con compilazione riuscita, nessun avviso sui limiti degli stili e output in `frontend/dist/frontend`. Questi risultati riguardano il precedente restyling di login e registrazione e non attestano una nuova compilazione della landing o del logout. Il presente aggiornamento documentale non ripete il build.
 
 In una precedente attività autorizzata sui test, distinta dal restyling, l’assistente ha eseguito dalla cartella `frontend`:
 
@@ -778,13 +797,13 @@ npm.cmd test -- --no-watch
 | `403` | 1 | Sessione conservata, nessuna navigazione e propagazione dell’errore |
 | `401` tardivo con nuova sessione | 1 | Nuovo token conservato, nessuna navigazione e propagazione dell’errore |
 
-Gli 8 casi dell’interceptor usano `HttpTestingController` per simulare le risposte HTTP e uno spy sul Router: non contattano il backend e non verificano il flusso completo nel browser. Il test di `App` verifica soltanto la creazione del componente.
+Gli 8 casi dell’interceptor usano `HttpTestingController` per simulare le risposte HTTP e uno spy sul Router: non contattano il backend e non verificano il flusso completo nel browser. Il test di `App` verifica soltanto la creazione del componente. L’esecuzione dei 9 casi precede la landing e la nuova gestione del logout: non è stata ripetuta e non costituisce una verifica automatica delle modifiche successive.
 
 **Ulteriori test automatici frontend rinviati per scelta dello sviluppatore:** non vengono aggiunti test di AuthService o guard, né altri casi dell’interceptor. Questa scelta non modifica i risultati dei 9 casi già eseguiti.
 
 #### Frontend: verifiche grafiche locali — FATTO per gli scenari registrati
 
-Durante il restyling l’assistente ha aperto il build di produzione in Chrome headless con un server di anteprima locale, senza contattare il backend reale. Sono state verificate entrambe le pagine a larghezze di 1440, 390 e 320 px: campi contenuti nella finestra, nessuno scorrimento orizzontale e parte iniziale della scheda raggiungibile anche quando la pagina di registrazione richiede scorrimento verticale.
+Durante il restyling l’assistente ha aperto il build di produzione in Chrome headless con un server di anteprima locale, senza contattare il backend reale. Sono state verificate le pagine di login e registrazione a larghezze di 1440, 390 e 320 px: campi contenuti nella finestra, nessuno scorrimento orizzontale e parte iniziale della scheda raggiungibile anche quando la pagina di registrazione richiede scorrimento verticale.
 
 Sono stati inoltre controllati l’icona decorativa, il messaggio di registrazione completata, i cinque errori del form di registrazione vuoto, il focus da tastiera con contorno visibile, lo stile del pulsante disabilitato e l’assenza di transizioni con movimento ridotto. Gli screenshot sono stati ispezionati nella precedente attività; queste prove riguardano la grafica e gli stati dell’interfaccia, non una registrazione HTTP sul backend reale.
 
@@ -793,6 +812,19 @@ Sono stati inoltre controllati l’icona decorativa, il messaggio di registrazio
 Il 18 ottobre lo sviluppatore ha dichiarato funzionanti e completati, per il perimetro attuale, backend e frontend delle pagine di login e registrazione. La conferma riguarda il flusso principale: registrazione pubblica come OPERATORI, ritorno alla login con conferma e successivo accesso all’applicazione con le credenziali create.
 
 Lo sviluppatore ha inoltre confermato la procedura del primo ADMIN, Raffo: registrazione tramite Postman, promozione riservata nel database con incremento di `auth_version`, nuova login con ruolo ADMIN e chiamata a `GET /api/v1/admin/ping` con risposta `200`. L’assistente ha guidato la procedura e controllato il codice; non ha eseguito queste operazioni sul database o le richieste Postman.
+
+#### Landing e logout frontend: prove manuali confermate — FATTO per gli scenari registrati
+
+Lo sviluppatore ha completato la home con illustrazione visibile e ha confermato il funzionamento delle prove guidate del logout. I dati del benvenuto arrivano da `/me`; l’intestazione aggiornata dispone utente a sinistra, Airport App al centro e Logout a destra.
+
+| Scenario | Esito confermato dallo sviluppatore |
+| --- | --- |
+| Login e apertura della home | Landing `/home` con dati dell’utente e illustrazione |
+| Backend Spring Boot fermato dopo la login, frontend lasciato attivo e pagina non ricaricata; pressione di Logout | Uscita locale e ritorno a `/login?reason=logout-unconfirmed`, con avviso di revoca non confermata |
+| Riavvio del backend e nuova login | Accesso nuovamente consentito |
+| Logout con backend attivo | `POST /api/v1/auth/logout` con stato `204`, ritorno alla login senza avviso ambrato |
+
+L’assistente ha controllato i sorgenti e guidato le prove; non ha eseguito queste richieste al backend né arrestato o avviato il processo dello sviluppatore. La prova con backend spento verifica la gestione dell’errore di connessione e non dimostra l’intervento del timeout: il limite di 10 secondi è presente nel codice, ma non è stata registrata una richiesta mantenuta in attesa per tutta la durata prevista.
 
 #### Frontend: scenari specifici ancora DA VERIFICARE
 
@@ -803,6 +835,10 @@ La conferma del flusso principale non attesta una nuova prova dettagliata di ogn
 - Accesso diretto a `/profilo` senza sessione e refresh della pagina autenticata: ritorno al login.
 - Token revocato dal backend: premendo “Aggiorna profilo”, risposta `401`, ritorno al login e messaggio di sessione non valida.
 - Richiesta di registrazione manipolata per tentare di scegliere `ADMIN`: impossibilità di ottenere il ruolo amministrativo. La protezione è presente nel codice, ma non è stata registrata una prova dedicata dopo la modifica.
+
+- Logout con richiesta lasciata in attesa fino al timeout di 10 secondi: uscita locale con avviso di revoca non confermata.
+- Logout che riceve `401` e risposta tardiva del logout dopo una nuova sessione: coordinamento fra interceptor e Home e protezione del nuovo token, presenti nel codice ma senza una prova manuale dedicata registrata.
+- Verifica dedicata della home a 320 px e con nomi molto lunghi; le precedenti verifiche grafiche dell’assistente riguardavano login e registrazione.
 
 Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; questi scenari sono distinti dal completamento concordato del flusso minimo.
 
@@ -822,9 +858,10 @@ Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; qu
 2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
 3. **FATTO per gli scenari registrati** — `409` per email già presente e per violazione del vincolo causata da registrazioni concorrenti; prove Postman/SQL del 17 ottobre confermate con esiti `201`/`409` e una sola riga finale. Nessun nuovo test automatico aggiunto o eseguito.
 4. Prossimi sviluppi backend auth: automazione della predisposizione riservata degli ADMIN, validazione JWT e allineamento della policy di registrazione. La procedura manuale del primo ADMIN è già confermata; le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
-5. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria, Bearer alle API e profilo comune protetto. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Restyling, build e verifiche grafiche desktop/mobile completati; i 9 test frontend sono un’esecuzione storica distinta. Ulteriori test automatici rinviati per scelta dello sviluppatore.
-6. Prossimi sviluppi frontend: landing distinte ADMIN/OPERATORI, logout e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata.
-7. Sviluppare database, backend e frontend di modelli di aereo e tratte.
+5. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria e Bearer alle API. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Build, controlli grafici e 9 test frontend del precedente restyling restano risultati storici distinti, non nuove esecuzioni sulla home o sul logout.
+6. **FATTO per gli scenari registrati** — Landing comune `/home` protetta, illustrazione dell’aereo in costruzione, intestazione con utente a sinistra, marchio centrato e Logout a destra. Logout frontend con uscita locale e avviso quando la revoca non è confermata; prove con backend attivo e spento confermate. Timeout configurato a 10 secondi, con prova dedicata ancora da verificare. `/profilo` resta disponibile separatamente.
+7. Prossimi sviluppi frontend: aree distinte ADMIN/OPERATORI con menu amministrativo e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata. Ulteriori test automatici rinviati per scelta dello sviluppatore.
+8. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
 Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo, salvo le eccezioni esplicitamente autorizzate: test e restyling delle pagine di autenticazione. La predisposizione del primo ADMIN è stata eseguita e confermata dallo sviluppatore. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 

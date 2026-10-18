@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { tap } from 'rxjs';
+import { tap, timeout } from 'rxjs';
 import type { Observable } from 'rxjs';
 
 import { AuthSession } from './auth-session';
@@ -40,5 +40,14 @@ export class AuthService {
 
   me(): Observable<UserProfile> {
     return this.http.get<UserProfile>('/api/v1/auth/me');
+  }
+
+  logout(): Observable<void> {
+    return this.http.post<void>(
+      '/api/v1/auth/logout',
+      null
+    ).pipe(
+      timeout(10_000)
+    );
   }
 }

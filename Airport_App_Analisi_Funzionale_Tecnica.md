@@ -1,12 +1,12 @@
 # Airport App — Incarico del cliente e analisi iniziale
 
-**Versione:** 0.3 — 18 ottobre 2026
+**Versione:** 0.4 — 18 ottobre 2026
 
 **Stato:** perimetro aggiornato — login, registrazione pubblica OPERATORI, landing page ADMIN, modelli di aereo e tratte
 
 **Destinatario:** sviluppatore Java junior
 
-**Stato implementativo:** il flusso minimo BE/FE di login e registrazione è completato e confermato dallo sviluppatore; dopo la login si apre attualmente il profilo comune `/profilo`. Le landing distinte per ruolo e le altre funzioni previste sotto restano obiettivi successivi, non funzionalità già consegnate. Dettagli e verifiche sono registrati in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
+**Stato implementativo:** login, registrazione, landing comune `/home` e logout frontend sono completati per gli scenari registrati e confermati dallo sviluppatore. Dopo la login si apre `/home`; `/profilo` resta disponibile separatamente. Il logout è stato provato con backend attivo e spento; il timeout di 10 secondi è configurato ma non è stato verificato con una richiesta lasciata in attesa fino alla scadenza. Le aree distinte per ruolo, il menu amministrativo e il cambio password frontend restano sviluppi successivi. Dettagli e verifiche sono registrati in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
 
 ## 1. Il tuo cliente
 
@@ -108,7 +108,7 @@ Anche gli ADMIN devono rispettare le validazioni: non possono, ad esempio, regis
 
 ### RF-01 — Login
 
-L'utente inserisce email e password. Se le credenziali sono valide e l'account è attivo, accede al profilo comune `/profilo` nel flusso minimo attuale; la navigazione alle landing distinte per ruolo resta lo sviluppo successivo descritto in RF-04. Il sistema restituisce un messaggio generico in caso di errore, senza distinguere tra email inesistente, account disattivato e password errata.
+L'utente inserisce email e password. Se le credenziali sono valide e l'account è attivo, accede alla landing comune `/home` nel flusso minimo attuale; la navigazione alle landing distinte per ruolo resta lo sviluppo successivo descritto in RF-04. Il sistema restituisce un messaggio generico in caso di errore, senza distinguere tra email inesistente, account disattivato e password errata.
 
 Il sistema limita i tentativi ripetuti, considerando sia l'account sia l'origine della richiesta. Soglie iniziali proposte: cinque errori per account in quindici minuti e un limite separato per IP, configurabile e da verificare considerando la rete condivisa dell'aeroporto.
 
@@ -116,7 +116,11 @@ Il sistema limita i tentativi ripetuti, considerando sia l'account sia l'origine
 
 Durata proposta dell'access token: **15 minuti**. Nella prima versione non esiste refresh token: alla scadenza l'utente deve autenticarsi nuovamente. Angular conserva il token soltanto in memoria; ricaricare la pagina richiede quindi un nuovo login. È un compromesso esplicito di semplicità, da rivalutare per l'uso continuativo allo sportello.
 
-Il logout revoca lato server i token correnti dell'utente secondo il meccanismo tecnico descritto sotto. In questa versione esce quindi anche dalle altre sessioni aperte. Il frontend cancella comunque il token locale; se la richiesta di logout fallisce, la revoca lato server non è garantita fino alla scadenza.
+Il pulsante Logout della home invia `POST /api/v1/auth/logout` con il Bearer corrente. Durante la richiesta mostra “Uscita…” e impedisce invii ripetuti. La risposta `204` conferma la revoca lato server dei token precedenti dello stesso utente, anche nelle altre sessioni; il frontend cancella il token locale e torna alla login con sostituzione della voce corrente nella cronologia.
+
+Se la richiesta fallisce o supera il timeout configurato di 10 secondi, il frontend completa comunque l’uscita locale e torna a `/login?reason=logout-unconfirmed`, mostrando: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” Il messaggio viene rimosso all’inizio di un nuovo tentativo di login. In questo caso la revoca sul server non è confermata. Il `401` della richiesta di logout lascia alla Home la gestione della navigazione; gli altri `401` continuano a essere gestiti dall’interceptor come sessione scaduta o non valida.
+
+Lo sviluppatore ha confermato le prove con backend attivo e spento e la nuova login dopo il riavvio. La prova dedicata del timeout resta da verificare; i dettagli sono distinti nel documento del flusso JWT.
 
 ### RF-03 — Registrazione OPERATORI e predisposizione degli ADMIN
 
@@ -128,7 +132,17 @@ Il primo ADMIN è predisposto con una procedura tecnica riservata, senza passwor
 
 Email univoca, normalizzata eliminando gli spazi esterni e convertendola in minuscolo. Se si consegna una password temporanea, questa deve scadere e imporre il cambio: fino ad allora l’utente può soltanto consultare il proprio stato, cambiare password e uscire. Il completamento di questo passaggio precede l’accesso alla landing page.
 
-### RF-04 — Landing page ADMIN
+### RF-04 — Landing comune e successive aree per ruolo
+
+#### Landing comune implementata
+
+Dopo la login, ADMIN e OPERATORI arrivano attualmente a `/home`, protetta dal guard di autenticazione. Nome e ruolo sono caricati tramite `/api/v1/auth/me`, con stato di caricamento ed errore con possibilità di riprovare.
+
+L’intestazione mostra il benvenuto con nome dinamico e ruolo a sinistra, Airport App centrato rispetto all’intera barra e il pulsante Logout a destra. Sotto 640 px il marchio occupa la prima riga, mentre benvenuto e Logout occupano la seconda. Lo sfondo azzurro e i caratteri sono condivisi con login e registrazione.
+
+La scheda centrale mostra “Lavori in corso”, il testo “Stiamo preparando le nuove funzionalità.” e un’illustrazione SVG minimale dell’aereo in costruzione, con gru e barriere. L’asset è `frontend/public/illustration/airport-work-in-progress.svg`, con testo alternativo e proporzioni adattabili. Questa illustrazione descrive lo stato dei lavori del gestionale ed è distinta dalla futura immagine dell’aeroporto prevista per l’area ADMIN.
+
+#### Landing ADMIN prevista
 
 Dopo il login, l’ADMIN arriva a `/admin`. La pagina presenta:
 
@@ -275,14 +289,15 @@ Convenzioni: `201` creazione completata, `400` dati non validi, `401` credenzial
 | --- | --- | --- |
 | `/login` | Login e conferma della registrazione | Pubblico |
 | `/registrazione` | Registrazione senza scelta del ruolo, ritorno alla login | Pubblico |
-| `/profilo` | Profilo comune attualmente aperto dopo la login | Autenticato |
+| `/home` | Landing comune dopo la login, lavori in corso e Logout | Autenticato |
+| `/profilo` | Pagina separata di consultazione del profilo | Autenticato |
 | `/change-password` | Cambio password, anche obbligatorio al primo accesso | Autenticato |
 | `/admin` | Landing con immagine centrale e menù sinistro | ADMIN |
 | `/admin/aircraft-models` | Lista modelli e form “Aggiungi modello” | ADMIN |
 | `/admin/routes` | Lista tratte e form “Aggiungi tratta” | ADMIN |
 | `/operatori` | Benvenuto senza funzioni amministrative | OPERATORI |
 
-Le route `/login`, `/registrazione` e `/profilo` sono implementate. Le landing distinte e la pagina di cambio password frontend rimangono sviluppi successivi. Il profilo comune non sostituisce il requisito finale delle landing ADMIN/OPERATORI.
+Le route `/login`, `/registrazione`, `/home` e `/profilo` sono implementate; il logout è disponibile dalla home. Le aree distinte con menu amministrativo e la pagina di cambio password frontend rimangono sviluppi successivi. La home comune non sostituisce il requisito finale delle landing ADMIN/OPERATORI.
 
 Proporre un componente layout ADMIN riutilizzabile con menù e area contenuti. Non serve un endpoint per la landing statica o per il suo segnaposto. Nome e ruolo provengono dal profilo autenticato.
 
@@ -311,8 +326,11 @@ La scadenza dell’accesso riporta al login con un messaggio chiaro. Non ritenta
 | AC-17 | Registrazione con dati validi | Account OPERATORI creato; ritorno alla login con conferma, senza salvataggio del token della registrazione |
 | AC-18 | Tentativo di scegliere ADMIN durante la registrazione pubblica | Nessun account ADMIN creato attraverso `/register` |
 | AC-19 | Registrazione con email già presente | `409`, nessun duplicato e messaggio nell’interfaccia |
+| AC-20 | Login nel flusso minimo attuale | Apertura di `/home`, benvenuto e ruolo a sinistra, marchio centrato, Logout a destra e illustrazione dei lavori in corso |
+| AC-21 | Logout frontend con backend attivo | `204`, cancellazione locale del token e ritorno alla login senza avviso di revoca non confermata |
+| AC-22 | Logout con backend non raggiungibile | Uscita locale e ritorno alla login con avviso di revoca non confermata |
 
-Questa tabella definisce i risultati attesi, non certifica l’esecuzione di ogni scenario. Il flusso principale di login e registrazione e la predisposizione manuale del primo ADMIN sono confermati; i casi specifici e i limiti delle verifiche restano distinti in `Backend_Auth_JWT_Flow.md`.
+Questa tabella definisce i risultati attesi, non certifica l’esecuzione di ogni scenario. Il flusso principale di login e registrazione, la predisposizione manuale del primo ADMIN, la home e le prove guidate di logout con backend attivo e spento sono confermati; i casi specifici e i limiti delle verifiche restano distinti in `Backend_Auth_JWT_Flow.md`.
 
 Verificare autorizzazioni nel backend, vincoli del database, validazioni e due percorsi end-to-end: ADMIN inserisce un modello e una tratta; OPERATORI non può accedere alle stesse funzioni. Non basta verificare che un pulsante sia nascosto.
 
@@ -331,7 +349,7 @@ La migrazione richiederà un piano per credenziali, ruoli, sessioni e revoca: il
 Ordine di lavoro:
 
 1. Predisporre Java/Spring Boot, Angular/TypeScript e PostgreSQL.
-2. **FATTO per il flusso minimo** — Migrazione utenti, registrazione pubblica OPERATORI, predisposizione manuale del primo ADMIN, login JWT e profilo comune. Completamenti di sicurezza e verifiche residue sono indicati in `Backend_Auth_JWT_Flow.md`.
+2. **FATTO per il flusso minimo** — Migrazione utenti, registrazione pubblica OPERATORI, predisposizione manuale del primo ADMIN, login JWT, landing comune `/home` con lavori in corso e logout frontend. `/profilo` resta disponibile separatamente. Completamenti di sicurezza e verifiche residue, inclusa la prova dedicata del timeout, sono indicati in `Backend_Auth_JWT_Flow.md`.
 3. Realizzare landing ADMIN, menù sinistro, segnaposto dell’immagine e benvenuto OPERATORI.
 4. Implementare modello dati, API e form per i modelli di aereo.
 5. Implementare modello dati, API e form per le tratte.
@@ -340,6 +358,8 @@ Ordine di lavoro:
 La consegna comprende codice avviabile, migrazioni, istruzioni locali senza segreti e test dei comportamenti essenziali. Le nuove funzionalità saranno concordate e analizzate in una revisione successiva.
 
 ## 15. Registro della revisione
+
+**Versione 0.4 — 18 ottobre 2026:** documentate la landing comune `/home`, l’intestazione con benvenuto a sinistra, marchio centrato e Logout a destra, l’illustrazione dell’aereo in costruzione e il tema condiviso. Allineati flusso di login, sessione, schermate e criteri di accettazione al logout frontend completato e alle prove confermate con backend attivo e spento. Timeout configurato a 10 secondi, senza prova dedicata confermata. Aree distinte per ruolo, menu e cambio password frontend restano sviluppi successivi. Revisione limitata alla documentazione, senza nuovi build, test o commit.
 
 **Versione 0.3 — 18 ottobre 2026:** introdotta la registrazione pubblica esclusivamente OPERATORI, con ruolo assegnato dal backend e ritorno alla login senza salvataggio del token. Documentata la predisposizione manuale riservata del primo ADMIN. Allineati API, schermate, criteri di accettazione e stato implementativo al flusso BE/FE completato; registrati il restyling azzurro e l’icona dell’aereo. Landing per ruolo e funzionalità business restano sviluppi successivi. Le verifiche effettive e quelle residue sono distinte nel documento del flusso JWT.
 

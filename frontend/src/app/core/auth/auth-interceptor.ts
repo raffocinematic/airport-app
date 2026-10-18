@@ -22,6 +22,10 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
     requestUrl.pathname === '/api/v1/auth/login'
     || requestUrl.pathname === '/api/v1/auth/register';
 
+  const isLogoutRequest =
+    request.method === 'POST'
+    && requestUrl.pathname === '/api/v1/auth/logout';
+
   const token = authSession.getAccessToken();
 
   if (!isAirportApi || isPublicAuthEndpoint || token === null) {
@@ -43,12 +47,14 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
       ) {
         authSession.clear();
 
-        void router.navigate(['/login'], {
-          queryParams: {
-            reason: 'session-expired'
-          },
-          replaceUrl: true
-        });
+        if (!isLogoutRequest) {
+          void router.navigate(['/login'], {
+            queryParams: {
+              reason: 'session-expired'
+            },
+            replaceUrl: true
+          });
+        }
       }
 
       return throwError(() => error);

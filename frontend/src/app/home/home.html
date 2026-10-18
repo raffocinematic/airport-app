@@ -1,13 +1,27 @@
 <div class="home-page">
+
   <header class="home-header">
+    <div class="user-welcome">
+      @if (profile(); as user) {
+      <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
+
+      <span class="user-role">
+        {{ user.role === 'ADMIN' ? 'Admin' : 'Operatore' }}
+      </span>
+      }
+    </div>
+
     <span class="home-brand">Airport App</span>
 
-    @if (profile(); as user) {
-    <div class="user-welcome">
-      <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
-      <span class="user-role">{{ user.role }}</span>
-    </div>
-    }
+    <button
+      class="logout-button"
+      type="button"
+      (click)="logout()"
+      [disabled]="loggingOut()"
+      [attr.aria-busy]="loggingOut()"
+    >
+      {{ loggingOut() ? 'Uscita…' : 'Logout' }}
+    </button>
   </header>
 
   <main class="home-content">
@@ -20,7 +34,11 @@
       {{ errorMessage() }}
     </p>
 
-    <button type="button" (click)="loadProfile()">
+    <button
+      type="button"
+      (click)="loadProfile()"
+      [disabled]="loggingOut()"
+    >
       Riprova
     </button>
     }

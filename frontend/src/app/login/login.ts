@@ -36,6 +36,12 @@ export class Login {
       ? 'Registrazione completata. Ora puoi accedere.'
       : ''
   );
+  readonly warningMessage = signal(
+    this.route.snapshot.queryParamMap.get('reason') === 'logout-unconfirmed'
+      ? 'Sei uscito dall’applicazione. '
+      + 'La revoca delle altre sessioni non è stata confermata.'
+      : ''
+  );
 
   readonly form = this.formBuilder.group({
     email: [
@@ -67,6 +73,7 @@ export class Login {
 
     this.errorMessage.set('');
     this.successMessage.set('');
+    this.warningMessage.set('');
     this.normalizeEmail();
     this.form.markAllAsTouched();
 
