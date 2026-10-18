@@ -1,0 +1,41 @@
+<div class="home-page">
+  <header class="home-header">
+    <span class="home-brand">Airport App</span>
+
+    @if (profile(); as user) {
+    <div class="user-welcome">
+      <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
+      <span class="user-role">{{ user.role }}</span>
+    </div>
+    }
+  </header>
+
+  <main class="home-content">
+    @if (loading()) {
+    <p role="status">Caricamento dei dati dell’utente...</p>
+    }
+
+    @if (errorMessage()) {
+    <p class="error-message" role="alert">
+      {{ errorMessage() }}
+    </p>
+
+    <button type="button" (click)="loadProfile()">
+      Riprova
+    </button>
+    }
+
+    <section class="work-in-progress">
+      <img
+        class="construction-image"
+        src="/illustration/airport-work-in-progress.svg"
+        alt="Un aereo in costruzione su supporti, con una gru, un’ala sospesa e barriere da cantiere."
+        width="640"
+        height="400"
+      />
+
+      <h1>Lavori in corso</h1>
+      <p>Stiamo preparando le nuove funzionalità.</p>
+    </section>
+  </main>
+</div>

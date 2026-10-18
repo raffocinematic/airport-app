@@ -1,8 +1,12 @@
 # Airport App — Incarico del cliente e analisi iniziale
 
-**Versione:** 0.2 — 21 settembre 2026  
-**Stato:** perimetro aggiornato — login, landing page ADMIN, modelli di aereo e tratte  
+**Versione:** 0.3 — 18 ottobre 2026
+
+**Stato:** perimetro aggiornato — login, registrazione pubblica OPERATORI, landing page ADMIN, modelli di aereo e tratte
+
 **Destinatario:** sviluppatore Java junior
+
+**Stato implementativo:** il flusso minimo BE/FE di login e registrazione è completato e confermato dallo sviluppatore; dopo la login si apre attualmente il profilo comune `/profilo`. Le landing distinte per ruolo e le altre funzioni previste sotto restano obiettivi successivi, non funzionalità già consegnate. Dettagli e verifiche sono registrati in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
 
 ## 1. Il tuo cliente
 
@@ -32,6 +36,10 @@ L'aeroporto e la sua organizzazione sono uno scenario simulato. Questa prima ana
 - Inserimento dei modelli di aereo con categoria, capacità passeggeri personalizzata, carburante e numero di piloti.
 - Inserimento delle tratte riservato agli ADMIN.
 
+### Decisione concordata il 18 ottobre 2026
+
+È prevista la registrazione pubblica esclusivamente come `OPERATORI`, senza scelta del ruolo. Il primo ADMIN viene predisposto attraverso una procedura riservata. Dopo la registrazione l’utente torna alla login con una conferma e accede usando le credenziali scelte; il token restituito dalla registrazione non viene salvato dal frontend. Questa decisione sostituisce la precedente ipotesi di assenza di registrazione pubblica.
+
 ### Proposte da validare durante lo sviluppo
 
 | Tema | Ipotesi di lavoro |
@@ -39,7 +47,7 @@ L'aeroporto e la sua organizzazione sono uno scenario simulato. Questa prima ana
 | Londra | Anche il collegamento internazionale prevede andata e ritorno. |
 | Aeroporti di destinazione | Per ora identifichiamo le città; gli aeroporti specifici di Milano, Roma e Londra sono da scegliere. |
 | Personale | Gli OPERATORI possono autenticarsi, ma per ora vedono soltanto una pagina di benvenuto senza funzioni amministrative. I loro permessi operativi saranno definiti in seguito. |
-| Account | Nessuna registrazione pubblica. In questa fase gli account sono predisposti con una procedura tecnica riservata; il pannello di gestione utenti è rinviato. |
+| Account | Decisione confermata il 18 ottobre: registrazione pubblica solo OPERATORI; predisposizione degli ADMIN riservata. Il pannello di gestione utenti è rinviato. |
 | Vendita futura | Vendita allo sportello effettuata dal personale; nessun portale passeggeri nella prima versione. |
 | Orari e frequenza | Non sono ancora definiti: tre rotte non significa tre voli al giorno. |
 | Modelli e flotta | Si registrano modelli di aereo; i singoli aeromobili con matricola e la loro assegnazione ai voli sono rinviati. |
@@ -71,7 +79,7 @@ Nel modello iniziale avremo **tre rotte commerciali**. Assumendo il ritorno anch
 
 La nuova richiesta sostituisce la precedente pianificazione del primo rilascio. Sono inclusi soltanto:
 
-1. Login JWT, logout e distinzione tra `ADMIN` e `OPERATORI`, con le protezioni di autenticazione già previste.
+1. Registrazione pubblica OPERATORI, predisposizione riservata del primo ADMIN, login JWT, logout e distinzione tra `ADMIN` e `OPERATORI`, con le protezioni di autenticazione già previste.
 2. Landing page ADMIN con menù a sinistra e immagine centrale dell’aeroporto.
 3. Inserimento e lista minima di consultazione dei modelli di aereo, riservati agli ADMIN.
 4. Inserimento e lista minima di consultazione delle tratte, riservati agli ADMIN.
@@ -100,7 +108,7 @@ Anche gli ADMIN devono rispettare le validazioni: non possono, ad esempio, regis
 
 ### RF-01 — Login
 
-L'utente inserisce email e password. Se le credenziali sono valide e l'account è attivo, accede alla dashboard. Il sistema restituisce un messaggio generico in caso di errore, senza distinguere tra email inesistente, account disattivato e password errata.
+L'utente inserisce email e password. Se le credenziali sono valide e l'account è attivo, accede al profilo comune `/profilo` nel flusso minimo attuale; la navigazione alle landing distinte per ruolo resta lo sviluppo successivo descritto in RF-04. Il sistema restituisce un messaggio generico in caso di errore, senza distinguere tra email inesistente, account disattivato e password errata.
 
 Il sistema limita i tentativi ripetuti, considerando sia l'account sia l'origine della richiesta. Soglie iniziali proposte: cinque errori per account in quindici minuti e un limite separato per IP, configurabile e da verificare considerando la rete condivisa dell'aeroporto.
 
@@ -110,9 +118,13 @@ Durata proposta dell'access token: **15 minuti**. Nella prima versione non esist
 
 Il logout revoca lato server i token correnti dell'utente secondo il meccanismo tecnico descritto sotto. In questa versione esce quindi anche dalle altre sessioni aperte. Il frontend cancella comunque il token locale; se la richiesta di logout fallisce, la revoca lato server non è garantita fino alla scadenza.
 
-### RF-03 — Predisposizione degli account
+### RF-03 — Registrazione OPERATORI e predisposizione degli ADMIN
 
-Il primo ADMIN e gli account necessari alla verifica del ruolo OPERATORI sono predisposti attraverso una procedura tecnica riservata e ripetibile, senza password predefinite nel repository. Non esiste registrazione pubblica né un pannello di gestione utenti in questa fase.
+Dalla login, il collegamento “Non hai un account? Registrati” apre `/registrazione`. Il form richiede nome, cognome, email, password e conferma password. La conferma deve coincidere e resta un controllo frontend: `POST /api/v1/auth/register` riceve soltanto nome, cognome, email e password e assegna sempre `OPERATORI` sul server. L’utente non può selezionare `ADMIN` né ottenerlo modificando la richiesta HTTP.
+
+La registrazione riuscita restituisce `201` e il frontend torna alla login con un messaggio di conferma, senza salvare il token ricevuto. L’email duplicata produce `409`; gli errori del form e della chiamata sono mostrati all’utente e gli invii ripetuti sono bloccati durante la richiesta. Login e registrazione condividono una grafica azzurra adattabile agli schermi piccoli, con icona decorativa dell’aereo.
+
+Il primo ADMIN è predisposto con una procedura tecnica riservata, senza password predefinite nel repository. La procedura manuale locale già confermata consiste nella registrazione dell’account come OPERATORI, nella promozione mirata tramite pgAdmin con incremento di `auth_version` e in una nuova login con verifica dell’accesso ADMIN. Non esistono un endpoint pubblico per creare ADMIN, uno script automatico di inizializzazione o un pannello di gestione utenti in questa fase. La procedura è descritta in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
 
 Email univoca, normalizzata eliminando gli spazi esterni e convertendola in minuscolo. Se si consegna una password temporanea, questa deve scadere e imporre il cambio: fino ad allora l’utente può soltanto consultare il proprio stato, cambiare password e uscire. Il completamento di questo passaggio precede l’accesso alla landing page.
 
@@ -241,6 +253,7 @@ Non creare ancora entità `Flight`, `Aircraft`, `Ticket` o `Passenger`. Quando p
 
 | Metodo e percorso | Accesso | Scopo |
 | --- | --- | --- |
+| `POST /api/v1/auth/register` | Pubblico | Registrazione con ruolo OPERATORI assegnato dal server |
 | `POST /api/v1/auth/login` | Pubblico, limitato | Autenticazione |
 | `POST /api/v1/auth/logout` | Autenticato | Revoca dei token correnti dell’utente |
 | `GET /api/v1/auth/me` | Autenticato | Profilo e obbligo di cambio password |
@@ -260,12 +273,16 @@ Convenzioni: `201` creazione completata, `400` dati non validi, `401` credenzial
 
 | Percorso proposto | Schermata | Accesso |
 | --- | --- | --- |
-| `/login` | Login | Pubblico |
+| `/login` | Login e conferma della registrazione | Pubblico |
+| `/registrazione` | Registrazione senza scelta del ruolo, ritorno alla login | Pubblico |
+| `/profilo` | Profilo comune attualmente aperto dopo la login | Autenticato |
 | `/change-password` | Cambio password, anche obbligatorio al primo accesso | Autenticato |
 | `/admin` | Landing con immagine centrale e menù sinistro | ADMIN |
 | `/admin/aircraft-models` | Lista modelli e form “Aggiungi modello” | ADMIN |
 | `/admin/routes` | Lista tratte e form “Aggiungi tratta” | ADMIN |
 | `/operatori` | Benvenuto senza funzioni amministrative | OPERATORI |
+
+Le route `/login`, `/registrazione` e `/profilo` sono implementate. Le landing distinte e la pagina di cambio password frontend rimangono sviluppi successivi. Il profilo comune non sostituisce il requisito finale delle landing ADMIN/OPERATORI.
 
 Proporre un componente layout ADMIN riutilizzabile con menù e area contenuti. Non serve un endpoint per la landing statica o per il suo segnaposto. Nome e ruolo provengono dal profilo autenticato.
 
@@ -291,6 +308,11 @@ La scadenza dell’accesso riporta al login con un messaggio chiaro. Non ritenta
 | AC-14 | Token assente, alterato, scaduto o con issuer/audience errati | `401` sulle API protette |
 | AC-15 | Logout completato e riuso del vecchio token | Token rifiutato |
 | AC-16 | Credenziali errate o account disattivato | Messaggio generico; nessun token |
+| AC-17 | Registrazione con dati validi | Account OPERATORI creato; ritorno alla login con conferma, senza salvataggio del token della registrazione |
+| AC-18 | Tentativo di scegliere ADMIN durante la registrazione pubblica | Nessun account ADMIN creato attraverso `/register` |
+| AC-19 | Registrazione con email già presente | `409`, nessun duplicato e messaggio nell’interfaccia |
+
+Questa tabella definisce i risultati attesi, non certifica l’esecuzione di ogni scenario. Il flusso principale di login e registrazione e la predisposizione manuale del primo ADMIN sono confermati; i casi specifici e i limiti delle verifiche restano distinti in `Backend_Auth_JWT_Flow.md`.
 
 Verificare autorizzazioni nel backend, vincoli del database, validazioni e due percorsi end-to-end: ADMIN inserisce un modello e una tratta; OPERATORI non può accedere alle stesse funzioni. Non basta verificare che un pulsante sia nascosto.
 
@@ -309,7 +331,7 @@ La migrazione richiederà un piano per credenziali, ruoli, sessioni e revoca: il
 Ordine di lavoro:
 
 1. Predisporre Java/Spring Boot, Angular/TypeScript e PostgreSQL.
-2. Realizzare migrazione utenti, predisposizione degli account, login JWT e controlli dei ruoli.
+2. **FATTO per il flusso minimo** — Migrazione utenti, registrazione pubblica OPERATORI, predisposizione manuale del primo ADMIN, login JWT e profilo comune. Completamenti di sicurezza e verifiche residue sono indicati in `Backend_Auth_JWT_Flow.md`.
 3. Realizzare landing ADMIN, menù sinistro, segnaposto dell’immagine e benvenuto OPERATORI.
 4. Implementare modello dati, API e form per i modelli di aereo.
 5. Implementare modello dati, API e form per le tratte.
@@ -318,6 +340,8 @@ Ordine di lavoro:
 La consegna comprende codice avviabile, migrazioni, istruzioni locali senza segreti e test dei comportamenti essenziali. Le nuove funzionalità saranno concordate e analizzate in una revisione successiva.
 
 ## 15. Registro della revisione
+
+**Versione 0.3 — 18 ottobre 2026:** introdotta la registrazione pubblica esclusivamente OPERATORI, con ruolo assegnato dal backend e ritorno alla login senza salvataggio del token. Documentata la predisposizione manuale riservata del primo ADMIN. Allineati API, schermate, criteri di accettazione e stato implementativo al flusso BE/FE completato; registrati il restyling azzurro e l’icona dell’aereo. Landing per ruolo e funzionalità business restano sviluppi successivi. Le verifiche effettive e quelle residue sono distinte nel documento del flusso JWT.
 
 **Versione 0.2:** introdotti landing ADMIN con menù laterale e immagine differita, anagrafica modelli di aereo e inserimento tratte esclusivamente ADMIN. Aggiornati permessi, modello dati, API, schermate e criteri di accettazione. Rinviate gestione voli, pannello utenti e altre funzioni precedentemente proposte, per rispettare il nuovo perimetro.
 

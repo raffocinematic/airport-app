@@ -88,7 +88,7 @@ export class Login {
     ).subscribe({
       next: () => {
         this.form.controls.password.reset('');
-        void this.router.navigateByUrl('/profilo');
+        void this.router.navigateByUrl('/home');
       },
       error: (error: unknown) => {
         if (error instanceof HttpErrorResponse) {

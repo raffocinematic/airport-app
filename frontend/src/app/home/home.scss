@@ -1,0 +1,153 @@
+@use '../shared/app-theme';
+
+:host {
+  @include app-theme.canvas;
+
+  display: block;
+  min-height: 100svh;
+}
+
+.home-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-height: 100svh;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border: 1px solid #d8eaf5;
+  border-radius: 1.25rem;
+  background: #ffffffd9;
+  box-shadow: 0 4px 16px #0759850a;
+}
+
+.home-brand {
+  color: #075985;
+  font-size: 0.85rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.user-welcome {
+  min-width: 0;
+  max-width: 70%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.user-welcome p {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.user-role {
+  box-sizing: border-box;
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  color: #075985;
+  background: #e0f2fe;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+}
+
+.home-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.work-in-progress {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 52rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid #d8eaf5;
+  border-top: 4px solid #38bdf8;
+  border-radius: 1.5rem;
+  background: #ffffff;
+  box-shadow:
+    0 24px 64px -24px #07598540,
+    0 4px 16px #0759850a;
+}
+
+.work-in-progress h1 {
+  margin: 0;
+  color: #12344e;
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.2;
+}
+
+.work-in-progress p {
+  margin: 0.8rem 0 0;
+  color: #526c80;
+  line-height: 1.6;
+}
+
+.error-message {
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid #fecdd3;
+  border-radius: 0.75rem;
+  color: #9f1239;
+  background: #fff1f2;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+button {
+  min-height: 2.75rem;
+  padding: 0.75rem 1.25rem;
+  border: 0;
+  border-radius: 0.75rem;
+  color: #ffffff;
+  background: #0369a1;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 4px;
+}
+
+.construction-image {
+  display: block;
+  width: 100%;
+  max-width: 40rem;
+  height: auto;
+  margin: 0 auto 1.5rem;
+}
+
+@media (max-width: 480px) {
+  .home-header {
+    flex-wrap: wrap;
+    padding: 1rem;
+  }
+
+  .user-welcome {
+    max-width: 100%;
+    margin-left: auto;
+  }
+}

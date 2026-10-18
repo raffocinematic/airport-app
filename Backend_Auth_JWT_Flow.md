@@ -6,7 +6,9 @@ L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono 
 
 Il 17 ottobre è stata completata la gestione del `409 Conflict` anche quando due registrazioni superano il controllo iniziale dell’email. Lo sviluppatore ha confermato le prove manuali con Postman e PostgreSQL locale: registrazione normale `201`, email già presente `409`, due INSERT concorrenti con esiti `201` e `409` e una sola riga finale. L’assistente ha controllato il codice senza eseguire o aggiungere test automatici per questa modifica.
 
-Il 18 ottobre è stato completato il frontend minimo di autenticazione: login Angular, chiamate HTTP, token solo in memoria, Bearer sulle API protette e pagina comune `/profilo` con guard. Il build è riuscito come riportato dallo sviluppatore; nella precedente attività l’assistente ha eseguito i test frontend con esito di 9 casi superati. Le prove complete nel browser restano da confermare. Gli ulteriori test automatici frontend sono rinviati per scelta dello sviluppatore. Questo aggiornamento modifica soltanto la documentazione e non esegue nuovi test.
+Il 18 ottobre sono stati completati backend e frontend del flusso minimo di login e registrazione. La registrazione pubblica crea soltanto OPERATORI: il ruolo non fa parte della richiesta ed è assegnato dal server. La pagina `/registrazione` torna alla login con una conferma, senza salvare il token restituito; la login conserva il token soltanto in memoria e apre `/profilo`, protetto da guard. Lo sviluppatore ha confermato il funzionamento del flusso principale e la predisposizione manuale del primo ADMIN con Postman e pgAdmin, seguita da nuova login e ping ADMIN riuscito.
+
+Sono stati inoltre applicati il restyling azzurro e l’icona SVG dell’aereo. Nella precedente attività l’assistente ha completato il build senza avvisi e verificato in una preview locale desktop/mobile impaginazione, messaggi, focus da tastiera, stato disabilitato e movimento ridotto. I 9 test frontend superati appartengono alla precedente esecuzione, distinta da queste verifiche grafiche. Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; gli scenari specifici non confermati sono indicati separatamente. Questo aggiornamento modifica soltanto la documentazione e non esegue nuovi test.
 
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
@@ -15,11 +17,11 @@ Il 18 ottobre è stato completato il frontend minimo di autenticazione: login An
 
 ## Obiettivo
 
-Questo documento descrive lo stato attuale del backend per autenticazione, registrazione tecnica, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`, insieme al frontend minimo di login e consultazione del profilo autenticato.
+Questo documento descrive lo stato attuale del backend per autenticazione, registrazione pubblica OPERATORI, predisposizione riservata del primo ADMIN, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`, insieme al frontend minimo di login, registrazione e consultazione del profilo autenticato.
 
 La priorita attuale e avere un flusso minimo funzionante:
 
-1. registrazione tecnica di un utente;
+1. registrazione pubblica di un OPERATORE e predisposizione riservata del primo ADMIN;
 2. login con email e password;
 3. generazione di un access token JWT;
 4. uso del token per chiamare API protette;
@@ -104,7 +106,7 @@ La tabella `app_users` contiene questi campi principali:
 - `password_hash`: password salvata come hash, non in chiaro;
 - `role`: ruolo applicativo, `ADMIN` oppure `OPERATORI`;
 - `active`: indica se l'account e attivo;
-- `auth_version`: contatore usato per revocare token precedenti al logout o al cambio password;
+- `auth_version`: contatore usato per revocare token precedenti al logout, al cambio password o a una modifica riservata del ruolo;
 - `created_at`: data di creazione.
 
 ## Registration flow
@@ -115,20 +117,22 @@ Endpoint:
 POST /api/v1/auth/register
 ```
 
-Per ora e pubblico per facilitare lo sviluppo. Nel prodotto finale non dovrebbe essere una registrazione libera: dovra diventare una procedura tecnica riservata o essere sostituita da gestione utenti/admin.
+**FATTO** — Registrazione pubblica consentita soltanto per il ruolo `OPERATORI`, secondo il requisito concordato il 18 ottobre. `RegisterRequest` contiene esclusivamente `firstName`, `lastName`, `email` e `password`. `AuthService.register()` assegna sempre `Role.OPERATORI`: il client non può scegliere il ruolo né creare ADMIN tramite questo endpoint, anche usando Postman.
+
+Il backend restituisce ancora `AuthResponse` con JWT. Il frontend di registrazione non salva quel token e rimanda a `/login?registered=true`; l’utente deve effettuare la login con le credenziali appena scelte. La conferma password è un controllo del form Angular e non viene inviata al backend.
 
 La policy attuale di `RegisterRequest` resta di 8–128 caratteri con `@NotBlank`. Il limite di 72 byte UTF-8 e il minimo di 15 caratteri introdotti per il cambio password non sono stati applicati alla registrazione.
 
 ### Passaggi logici
 
-1. Il client invia nome, cognome, email, password e ruolo.
+1. Il client invia nome, cognome, email e password; il ruolo è assente dal DTO.
 2. `AuthController` riceve la richiesta e valida il DTO `RegisterRequest` con `@Valid`.
 3. `AuthService.register()` normalizza l'email:
    - trim degli spazi esterni;
    - conversione in minuscolo.
 4. Il service controlla l’email con `existsByEmail()`: se è già presente, lancia `DuplicateResourceException`, gestita con `409 Conflict`.
 5. La password viene trasformata in hash tramite `PasswordEncoder`.
-6. Viene creata una entity `AppUser`.
+6. Viene creata una entity `AppUser` con ruolo `OPERATORI` assegnato dal server, account attivo e `authVersion` iniziale pari a zero.
 7. Il repository esegue `saveAndFlush()` dentro un `try/catch`: l’INSERT viene inviato al database prima di proseguire con la generazione del token.
 8. Se una registrazione concorrente ha inserito la stessa email, il service riconosce la violazione del relativo vincolo e lancia `DuplicateResourceException` con la causa originale. Gli altri errori di integrità vengono propagati.
 9. Se il salvataggio riesce, il backend genera un JWT e prepara la risposta con dati utente essenziali e token. Il metodo è transazionale: la risposta di successo arriva al controller dopo il commit.
@@ -150,17 +154,18 @@ In questo caso il service lancia `DuplicateResourceException("Email already exis
 
 L’eccezione runtime fa eseguire il rollback della transazione di registrazione. Se il vincolo o il codice SQLSTATE non corrispondono, il service rilancia l’eccezione originale senza attribuire l’errore all’email.
 
-Il nome del vincolo deve corrispondere a quello dello schema: un’eventuale rinomina richiederà il relativo allineamento della costante. Per questo sviluppo non sono state modificate le migrazioni o le regole di accesso a `/register`.
+Il nome del vincolo deve corrispondere a quello dello schema: un’eventuale rinomina richiederà il relativo allineamento della costante. La modifica del 17 ottobre relativa ai duplicati non ha cambiato migrazioni o regole di accesso a `/register`; il successivo sviluppo del 18 ottobre ha rimosso il ruolo dal DTO e imposto `OPERATORI` nel service.
 
 ### Esempio richiesta
+
+La password seguente è un segnaposto da sostituire localmente, non una credenziale predefinita:
 
 ```json
 {
   "firstName": "Mario",
-  "lastName": "Admin",
-  "email": "admin@test.it",
-  "password": "password123",
-  "role": "ADMIN"
+  "lastName": "Operatore",
+  "email": "operatore@test.it",
+  "password": "<PASSWORD_SCELTA_LOCALMENTE>"
 }
 ```
 
@@ -178,13 +183,37 @@ Body indicativo:
 {
   "userId": "...",
   "firstName": "Mario",
-  "lastName": "Admin",
-  "email": "admin@test.it",
-  "role": "ADMIN",
+  "lastName": "Operatore",
+  "email": "operatore@test.it",
+  "role": "OPERATORI",
   "accessToken": "...",
   "expiresInSeconds": 900
 }
 ```
+
+### Predisposizione riservata del primo ADMIN — FATTO, procedura manuale locale
+
+La procedura seguente è stata confermata dallo sviluppatore per il primo account ADMIN, Raffo. Le credenziali reali restano locali e non sono riportate nel documento.
+
+1. Con Postman, eseguire `POST /api/v1/auth/register` con Authorization `No Auth` e i quattro campi del DTO. Il risultato atteso è `201`, con ruolo `OPERATORI` e password salvata come hash BCrypt.
+2. Nel Query Tool di pgAdmin, sul database `airport_app`, promuovere soltanto l’account scelto e incrementare la versione di autenticazione. Sostituire il segnaposto con l’email normalizzata effettiva:
+
+```sql
+BEGIN;
+
+UPDATE public.app_users
+SET role = 'ADMIN',
+    auth_version = auth_version + 1
+WHERE email = '<EMAIL_NORMALIZZATA_ADMIN>'
+  AND role = 'OPERATORI'
+RETURNING id, first_name, email, role, auth_version;
+```
+
+3. Verificare che venga restituita esattamente la riga desiderata, poi eseguire separatamente `COMMIT;`. Per annullare prima della conferma, usare `ROLLBACK;` al posto del commit.
+4. Eseguire una nuova login con Postman o con l’applicazione. L’incremento di `auth_version` invalida i token precedenti; la nuova login restituisce ruolo `ADMIN` e un nuovo token.
+5. Con Postman, usare il token della nuova login come Bearer su `GET /api/v1/admin/ping`: esito `200` confermato dallo sviluppatore.
+
+Questa è una procedura manuale riservata a chi accede al database. Non è stato aggiunto un endpoint pubblico per scegliere `ADMIN`, né uno script automatico di inizializzazione o un pannello utenti. Il ruolo ADMIN non è vincolato a una sola riga dallo schema: la procedura descrive la predisposizione del primo account locale, non una regola automatica di unicità degli amministratori.
 
 ## Login flow
 
@@ -422,17 +451,19 @@ Il flusso riguarda il cambio volontario della propria password. Password tempora
 
 I comandi seguenti restano esempi con risultati attesi. Le prove effettivamente confermate, svolte anche con Postman, sono registrate separatamente nella sezione Test; questo elenco non certifica che ogni comando sia stato eseguito.
 
-### Registrare ADMIN
+### Predisporre ADMIN
 
-```powershell
-curl.exe -i -X POST "http://localhost:8080/api/v1/auth/register" -H "Content-Type: application/json" -d '{"firstName":"Mario","lastName":"Admin","email":"admin@test.it","password":"password123","role":"ADMIN"}'
-```
+`POST /api/v1/auth/register` crea esclusivamente OPERATORI. Per predisporre il primo ADMIN seguire la procedura riservata descritta nella sezione Registration flow: registrazione, UPDATE mirato nel database con incremento di `auth_version`, nuova login e verifica del ping ADMIN.
 
 ### Registrare OPERATORI
 
+Sostituire il segnaposto della password con un valore scelto localmente:
+
 ```powershell
-curl.exe -i -X POST "http://localhost:8080/api/v1/auth/register" -H "Content-Type: application/json" -d '{"firstName":"Luca","lastName":"Operatore","email":"operatore@test.it","password":"password123","role":"OPERATORI"}'
+curl.exe -i -X POST "http://localhost:8080/api/v1/auth/register" -H "Content-Type: application/json" -d '{"firstName":"Luca","lastName":"Operatore","email":"operatore@test.it","password":"<PASSWORD_SCELTA_LOCALMENTE>"}'
 ```
+
+Gli esempi di login seguenti richiedono credenziali di account realmente predisposti. Email e password dimostrative non sono account o segreti inclusi nel progetto.
 
 ### Login ADMIN
 
@@ -557,7 +588,8 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Backend Spring Boot, Maven e Java 17.
 - **FATTO** — PostgreSQL e Liquibase configurati; migrazioni e repository verificati nei tre test su PostgreSQL 17 temporaneo, con esito positivo confermato dallo sviluppatore. Le prove manuali di registrazione del 17 ottobre sono confermate sul database locale PostgreSQL 18; gli ambienti distribuiti non sono stati esaminati.
 - **FATTO** — Migrazione `app_users`, entity `AppUser`, enum `ADMIN`/`OPERATORI` e repository utenti.
-- **FATTO** — DTO register/login/me/change-password e risposta autenticazione.
+- **FATTO** — DTO register/login/me/change-password e risposta autenticazione; la richiesta di registrazione contiene soltanto nome, cognome, email e password, con ruolo `OPERATORI` assegnato dal server.
+- **FATTO** — Registrazione pubblica OPERATORI e predisposizione manuale riservata del primo ADMIN con incremento di `auth_version`, nuova login e ping ADMIN; esito confermato dallo sviluppatore il 18 ottobre.
 - **FATTO** — Registrazione con normalizzazione email, controllo duplicati e vincolo univoco nel database. Gestione `409` anche per registrazioni concorrenti tramite `saveAndFlush()` e riconoscimento di SQLSTATE `23505`/vincolo `app_users_email_key`; causa originale conservata e altri errori propagati. Prove manuali del 17 ottobre confermate dallo sviluppatore.
 - **FATTO** — Hash password con `BCryptPasswordEncoder`.
 - **FATTO** — Login con verifica password e account attivo; errore generico per credenziali non valide.
@@ -572,13 +604,14 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Controlli espliciti di subject e tipo/valore di `authVersion`, con rifiuto tramite `BadCredentialsException`.
 - **FATTO** — 20 casi del converter superati con JDK 17; tre test di integrazione PostgreSQL con esito positivo confermato dallo sviluppatore. Esecuzioni e limiti distinti nella sezione Test.
 
-- **FATTO** — Frontend Angular con login, token solo in memoria, interceptor Bearer e pagina `/profilo` protetta. Build riportato dallo sviluppatore e 9 test frontend già superati; dettagli e limiti nelle sezioni Frontend minimo e Test.
+- **FATTO** — Frontend Angular con login, registrazione pubblica OPERATORI, token della login solo in memoria, interceptor Bearer e pagina `/profilo` protetta. Flusso principale confermato dallo sviluppatore; dopo la registrazione si torna alla login senza salvare il token ricevuto.
+- **FATTO** — Restyling azzurro di login e registrazione, icona SVG dell’aereo e stili SCSS condivisi. Build senza avvisi e verifiche grafiche desktop/mobile svolti dall’assistente nella precedente attività; i 9 test frontend restano un’esecuzione storica distinta.
 
 ## Cose da fare a breve
 
 ### Backend auth
 
-- **NON IMPLEMENTATO** — Predisposizione riservata degli account: `/register` è pubblico e accetta anche `ADMIN`. Il pannello web utenti resta rinviato.
+- **NON IMPLEMENTATO** — Automazione della predisposizione riservata degli ADMIN e pannello web utenti. La procedura manuale locale del primo ADMIN è già completata; `/register` è pubblico e crea soltanto OPERATORI.
 
 - **DA VERIFICARE** — Automatizzare le risposte HTTP 401/403 già provate manualmente; completare la verifica di token scaduti e con firma alterata. I test del converter non attraversano la catena HTTP.
 - **DA VERIFICARE** — `Cache-Control: no-store` su login e register: già osservato nelle risposte 401 riportate durante le prove, ma non ancora registrato per tutte le risposte di autenticazione.
@@ -603,9 +636,12 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 
 ### Frontend minimo
 
-- **FATTO** — Template iniziale sostituito con `router-outlet`; route `/login` e `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
+- **FATTO** — Template iniziale sostituito con `router-outlet`; route pubbliche `/login` e `/registrazione`, route protetta `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
 - **FATTO** — Pagina login con form reattivo, validazione email/password, rimozione degli spazi esterni dall’email, stato di caricamento e blocco degli invii ripetuti. Gestione degli errori di credenziali, validazione, rete e servizio; password svuotata dopo il successo e navigazione a `/profilo`.
-- **FATTO** — `AuthService.login()` chiama `POST /api/v1/auth/login` e salva il token nella sessione; `me()` chiama `GET /api/v1/auth/me`.
+- **FATTO** — `AuthService.login()` chiama `POST /api/v1/auth/login` e salva il token nella sessione; `register()` chiama `POST /api/v1/auth/register` senza salvare il token della risposta; `me()` chiama `GET /api/v1/auth/me`.
+- **FATTO** — Pagina `/registrazione` con nome, cognome, email, password e conferma password. Validazione coerente con il DTO e controllo della coincidenza delle password; normalizzazione degli spazi esterni di nome, cognome ed email, senza alterare le password. La richiesta HTTP esclude conferma password e ruolo.
+- **FATTO** — Registrazione con stato di caricamento, blocco degli invii ripetuti e gestione di `400`, `409`, rete e servizio. Dopo il successo le password sono svuotate e si torna a `/login?registered=true`, con messaggio di conferma; collegamenti reciproci “Registrati” e “Accedi”.
+- **FATTO** — Grafica condivisa per login e registrazione: sfondo azzurro sfumato, schede bianche, pulsanti blu e icona decorativa dell’aereo in SVG. Gli SCSS dei componenti usano il mixin in `frontend/src/app/shared/_auth-page.scss`; nessuna dipendenza aggiunta. Layout adattabile, focus da tastiera visibile e rispetto della preferenza di movimento ridotto.
 - **FATTO** — Token conservato soltanto in memoria tramite `AuthSession`, senza localStorage, sessionStorage o cookie. Il refresh della pagina perde la sessione e la route protetta rimanda al login.
 - **FATTO** — Interceptor che aggiunge il Bearer soltanto alle richieste della stessa origine con percorso `/api/v1/`, escludendo login e register. Nessun token aggiunto a domini esterni o percorsi diversi.
 - **FATTO** — Pagina comune `/profilo` con dati reali di nome, email e ruolo ottenuti da `/me`, caricamento, messaggi di errore e pulsante per aggiornare il profilo.
@@ -617,9 +653,9 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 - **NON IMPLEMENTATO** — Logout e cambio password frontend; i rispettivi endpoint backend sono già presenti.
 - **NON IMPLEMENTATO** — Liste e form di modelli di aereo e tratte.
 
-Il flusso implementato è: form login -> POST login -> token in memoria -> `/profilo` -> GET `/me` con Bearer -> visualizzazione del profilo. Il proxy descritto riguarda lo sviluppo locale; l’instradamento delle API in produzione resta da predisporre.
+Il flusso implementato è: login -> collegamento “Registrati” -> form di registrazione -> POST register con creazione OPERATORI -> ritorno alla login con conferma -> POST login -> token in memoria -> `/profilo` -> GET `/me` con Bearer -> visualizzazione del profilo. Il proxy descritto riguarda lo sviluppo locale; l’instradamento delle API in produzione resta da predisporre.
 
-La registrazione temporanea citata precedentemente non è una funzionalità del prodotto previsto: l’analisi richiede una procedura tecnica riservata. La sicurezza frontend non sostituisce quella backend.
+La registrazione pubblica OPERATORI è un requisito concordato il 18 ottobre e sostituisce la precedente esclusione della registrazione pubblica nell’analisi iniziale. La creazione degli ADMIN resta riservata e non è disponibile nel form. La sicurezza frontend non sostituisce quella backend.
 
 ### Test — stato al 18 ottobre 2026
 
@@ -723,7 +759,9 @@ Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei dup
 
 #### Frontend: build e test già eseguiti — FATTO per gli scenari registrati
 
-Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre: compilazione completata e output in `frontend/dist/frontend`. Nella precedente attività autorizzata sui test, l’assistente ha eseguito dalla cartella `frontend`:
+Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre. Nella successiva attività di restyling l’assistente ha eseguito nuovamente il build finale, con compilazione riuscita, nessun avviso sui limiti degli stili e output in `frontend/dist/frontend`. Il presente aggiornamento documentale non ripete il build.
+
+In una precedente attività autorizzata sui test, distinta dal restyling, l’assistente ha eseguito dalla cartella `frontend`:
 
 ```powershell
 npm.cmd test -- --no-watch
@@ -744,22 +782,35 @@ Gli 8 casi dell’interceptor usano `HttpTestingController` per simulare le risp
 
 **Ulteriori test automatici frontend rinviati per scelta dello sviluppatore:** non vengono aggiunti test di AuthService o guard, né altri casi dell’interceptor. Questa scelta non modifica i risultati dei 9 casi già eseguiti.
 
-#### Frontend: prove complete nel browser — DA VERIFICARE
+#### Frontend: verifiche grafiche locali — FATTO per gli scenari registrati
 
-L’implementazione è presente nei sorgenti, ma non è ancora registrata una conferma esplicita dell’intera sequenza nel browser con il backend reale:
+Durante il restyling l’assistente ha aperto il build di produzione in Chrome headless con un server di anteprima locale, senza contattare il backend reale. Sono state verificate entrambe le pagine a larghezze di 1440, 390 e 320 px: campi contenuti nella finestra, nessuno scorrimento orizzontale e parte iniziale della scheda raggiungibile anche quando la pagina di registrazione richiede scorrimento verticale.
 
-- Credenziali corrette: navigazione a `/profilo` e visualizzazione dei dati restituiti da `/me`.
-- Credenziali errate: messaggio generico e possibilità di riprovare; assenza di una nuova sessione.
+Sono stati inoltre controllati l’icona decorativa, il messaggio di registrazione completata, i cinque errori del form di registrazione vuoto, il focus da tastiera con contorno visibile, lo stile del pulsante disabilitato e l’assenza di transizioni con movimento ridotto. Gli screenshot sono stati ispezionati nella precedente attività; queste prove riguardano la grafica e gli stati dell’interfaccia, non una registrazione HTTP sul backend reale.
+
+#### Login, registrazione e primo ADMIN: conferma dello sviluppatore — FATTO per il flusso principale
+
+Il 18 ottobre lo sviluppatore ha dichiarato funzionanti e completati, per il perimetro attuale, backend e frontend delle pagine di login e registrazione. La conferma riguarda il flusso principale: registrazione pubblica come OPERATORI, ritorno alla login con conferma e successivo accesso all’applicazione con le credenziali create.
+
+Lo sviluppatore ha inoltre confermato la procedura del primo ADMIN, Raffo: registrazione tramite Postman, promozione riservata nel database con incremento di `auth_version`, nuova login con ruolo ADMIN e chiamata a `GET /api/v1/admin/ping` con risposta `200`. L’assistente ha guidato la procedura e controllato il codice; non ha eseguito queste operazioni sul database o le richieste Postman.
+
+#### Frontend: scenari specifici ancora DA VERIFICARE
+
+La conferma del flusso principale non attesta una nuova prova dettagliata di ogni caso di errore o di sessione. Restano senza una conferma manuale specifica nel browser:
+
+- Credenziali errate: messaggio generico e possibilità di riprovare, senza creazione di una nuova sessione.
+- Registrazione con email già presente: messaggio relativo al `409`; il percorso backend dei duplicati è già stato verificato nelle prove storiche del 17 ottobre.
 - Accesso diretto a `/profilo` senza sessione e refresh della pagina autenticata: ritorno al login.
 - Token revocato dal backend: premendo “Aggiorna profilo”, risposta `401`, ritorno al login e messaggio di sessione non valida.
+- Richiesta di registrazione manipolata per tentare di scegliere `ADMIN`: impossibilità di ottenere il ruolo amministrativo. La protezione è presente nel codice, ma non è stata registrata una prova dedicata dopo la modifica.
 
-Le prove manuali backend già confermate e i test simulati dell’interceptor non costituiscono una conferma di questi scenari nel browser.
+Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; questi scenari sono distinti dal completamento concordato del flusso minimo.
 
 #### Scenari backend ancora DA VERIFICARE
 
 - Test HTTP automatici di 401/403, content type, body JSON e header Bearer.
 - Login con email inesistente o account disattivato e ulteriori casi di password errata: `401` generico, nessun token. Il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
-- Token ADMIN: ping ADMIN `200`, ping OPERATORI `403`; non dedurre questa verifica HTTP dai test unitari dei ruoli.
+- Token ADMIN su ping OPERATORI: `403`, ancora da confermare. Il ping ADMIN `200` è stato confermato nella procedura del primo ADMIN; non dedurre il caso OPERATORI dai test unitari dei ruoli.
 - Token con firma alterata o scaduto: `401`; issuer/audience errati dopo i relativi controlli, ancora da implementare.
 - Estensione della revoca dei due token ai ping e a richieste HTTP di logout concorrenti. La revoca su `/me` è confermata manualmente; la concorrenza dell’UPDATE è verificata nel test del repository.
 - Disattivazione dell’account dopo emissione token verificata attraverso una richiesta HTTP e database reale.
@@ -770,12 +821,12 @@ Le prove manuali backend già confermate e i test simulati dell’interceptor no
 1. **FATTO per gli scenari registrati** — Errori JSON 401/403, controlli dei claim e 20 casi del converter; incremento atomico di `authVersion`, tre test PostgreSQL del repository e prova Postman di revoca di due token su `/me`.
 2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
 3. **FATTO per gli scenari registrati** — `409` per email già presente e per violazione del vincolo causata da registrazioni concorrenti; prove Postman/SQL del 17 ottobre confermate con esiti `201`/`409` e una sola riga finale. Nessun nuovo test automatico aggiunto o eseguito.
-4. Prossimi sviluppi backend auth: predisposizione riservata degli account, validazione JWT e allineamento della policy di registrazione. Le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
-5. **FATTO per gli scenari registrati** — Login Angular, token in memoria, Bearer alle API, profilo comune protetto e gestione del `401`. Build riportato dallo sviluppatore e 9 test frontend già superati. Prove complete nel browser ancora da confermare; ulteriori test automatici rinviati per scelta dello sviluppatore.
+4. Prossimi sviluppi backend auth: automazione della predisposizione riservata degli ADMIN, validazione JWT e allineamento della policy di registrazione. La procedura manuale del primo ADMIN è già confermata; le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
+5. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria, Bearer alle API e profilo comune protetto. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Restyling, build e verifiche grafiche desktop/mobile completati; i 9 test frontend sono un’esecuzione storica distinta. Ulteriori test automatici rinviati per scelta dello sviluppatore.
 6. Prossimi sviluppi frontend: landing distinte ADMIN/OPERATORI, logout e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata.
 7. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
-Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo. Le precedenti eccezioni autorizzate per la scrittura assistita di test restano riferite a quelle attività. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
+Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo, salvo le eccezioni esplicitamente autorizzate: test e restyling delle pagine di autenticazione. La predisposizione del primo ADMIN è stata eseguita e confermata dallo sviluppatore. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 
 ## Nota didattica importante
 
