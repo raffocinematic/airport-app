@@ -1,0 +1,28 @@
+:host {
+  display: block;
+}
+
+.profile-page {
+  max-width: 540px;
+  margin: 4rem auto;
+  padding: 1.5rem;
+}
+
+dt {
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+dd {
+  margin: 0.25rem 0 1rem;
+  overflow-wrap: anywhere;
+}
+
+.error-message {
+  color: #b42318;
+}
+
+button {
+  padding: 0.75rem 1rem;
+  font: inherit;
+}

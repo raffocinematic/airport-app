@@ -1,10 +1,12 @@
 # Autenticazione con JWT - Airport App
 
-## Stato della verifica — aggiornamento del 17 ottobre 2026
+## Stato della verifica — aggiornamento del 18 ottobre 2026
 
-L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. È stato inoltre implementato `POST /api/v1/auth/change-password`: lo sviluppatore ha confermato su Postman il cambio password, la revoca del vecchio token, l’utilizzo del nuovo token e i casi di errore descritti nella sezione Test. Nel repository è presente anche il nuovo test del caso positivo di aggiornamento password/versione. Durante questo aggiornamento l’assistente ha controllato i sorgenti senza eseguire test; le diverse verifiche sono registrate separatamente. Gli ulteriori test del cambio password sono rinviati per scelta dello sviluppatore.
+L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. È stato inoltre implementato `POST /api/v1/auth/change-password`: lo sviluppatore ha confermato su Postman il cambio password, la revoca del vecchio token, l’utilizzo del nuovo token e i casi di errore descritti nella sezione Test. Nel repository è presente anche il nuovo test del caso positivo di aggiornamento password/versione. Durante l’aggiornamento backend l’assistente ha controllato i sorgenti senza eseguire test; le diverse verifiche sono registrate separatamente. Gli ulteriori test del cambio password sono rinviati per scelta dello sviluppatore.
 
 Il 17 ottobre è stata completata la gestione del `409 Conflict` anche quando due registrazioni superano il controllo iniziale dell’email. Lo sviluppatore ha confermato le prove manuali con Postman e PostgreSQL locale: registrazione normale `201`, email già presente `409`, due INSERT concorrenti con esiti `201` e `409` e una sola riga finale. L’assistente ha controllato il codice senza eseguire o aggiungere test automatici per questa modifica.
+
+Il 18 ottobre è stato completato il frontend minimo di autenticazione: login Angular, chiamate HTTP, token solo in memoria, Bearer sulle API protette e pagina comune `/profilo` con guard. Il build è riuscito come riportato dallo sviluppatore; nella precedente attività l’assistente ha eseguito i test frontend con esito di 9 casi superati. Le prove complete nel browser restano da confermare. Gli ulteriori test automatici frontend sono rinviati per scelta dello sviluppatore. Questo aggiornamento modifica soltanto la documentazione e non esegue nuovi test.
 
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
@@ -13,7 +15,7 @@ Il 17 ottobre è stata completata la gestione del `409 Conflict` anche quando du
 
 ## Obiettivo
 
-Questo documento descrive lo stato attuale del backend per autenticazione, registrazione tecnica, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`.
+Questo documento descrive lo stato attuale del backend per autenticazione, registrazione tecnica, login con JWT, logout, cambio password e gestione base dei ruoli `ADMIN` e `OPERATORI`, insieme al frontend minimo di login e consultazione del profilo autenticato.
 
 La priorita attuale e avere un flusso minimo funzionante:
 
@@ -570,6 +572,8 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Controlli espliciti di subject e tipo/valore di `authVersion`, con rifiuto tramite `BadCredentialsException`.
 - **FATTO** — 20 casi del converter superati con JDK 17; tre test di integrazione PostgreSQL con esito positivo confermato dallo sviluppatore. Esecuzioni e limiti distinti nella sezione Test.
 
+- **FATTO** — Frontend Angular con login, token solo in memoria, interceptor Bearer e pagina `/profilo` protetta. Build riportato dallo sviluppatore e 9 test frontend già superati; dettagli e limiti nelle sezioni Frontend minimo e Test.
+
 ## Cose da fare a breve
 
 ### Backend auth
@@ -599,16 +603,25 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 
 ### Frontend minimo
 
-- **FATTO** — Progetto Angular predisposto, ancora con template iniziale e route vuote.
-- **NON IMPLEMENTATO** — Pagina login, chiamate HTTP, token in memoria e invio bearer alle API del gestionale.
-- **NON IMPLEMENTATO** — Lettura ruolo e navigazione a `/admin` o `/operatori`.
+- **FATTO** — Template iniziale sostituito con `router-outlet`; route `/login` e `/profilo`, con reindirizzamento alla login per il percorso vuoto o sconosciuto. Proxy di sviluppo `/api/**` verso `http://localhost:8080` e configurazione di HttpClient con interceptor.
+- **FATTO** — Pagina login con form reattivo, validazione email/password, rimozione degli spazi esterni dall’email, stato di caricamento e blocco degli invii ripetuti. Gestione degli errori di credenziali, validazione, rete e servizio; password svuotata dopo il successo e navigazione a `/profilo`.
+- **FATTO** — `AuthService.login()` chiama `POST /api/v1/auth/login` e salva il token nella sessione; `me()` chiama `GET /api/v1/auth/me`.
+- **FATTO** — Token conservato soltanto in memoria tramite `AuthSession`, senza localStorage, sessionStorage o cookie. Il refresh della pagina perde la sessione e la route protetta rimanda al login.
+- **FATTO** — Interceptor che aggiunge il Bearer soltanto alle richieste della stessa origine con percorso `/api/v1/`, escludendo login e register. Nessun token aggiunto a domini esterni o percorsi diversi.
+- **FATTO** — Pagina comune `/profilo` con dati reali di nome, email e ruolo ottenuti da `/me`, caricamento, messaggi di errore e pulsante per aggiornare il profilo.
+- **FATTO** — Guard della route `/profilo`: accesso consentito in presenza di token, altrimenti reindirizzamento al login. La presenza del token non ne dimostra la validità: la verifica effettiva resta al backend.
+- **FATTO** — Un `401` su una richiesta autenticata cancella la sessione corrente e rimanda al login con messaggio di sessione scaduta o non valida. Un `403` conserva la sessione. Il `401` tardivo di una richiesta con token precedente non cancella una nuova sessione con token diverso; l’errore viene comunque propagato al chiamante.
+- **PARZIALE** — Gestione della scadenza: rilevata alla successiva risposta `401` del backend. Non è implementata una verifica preventiva o un timer che interrompa la sessione mentre l’utente non effettua richieste.
+- **PARZIALE** — Ruolo letto e mostrato nel profilo comune; navigazione distinta a `/admin` o `/operatori` ancora **NON IMPLEMENTATA**.
 - **NON IMPLEMENTATO** — Landing ADMIN con menu e segnaposto immagine; benvenuto OPERATORI senza menu amministrativo.
-- **NON IMPLEMENTATO** — Protezioni route, scadenza, logout e cambio password frontend.
+- **NON IMPLEMENTATO** — Logout e cambio password frontend; i rispettivi endpoint backend sono già presenti.
 - **NON IMPLEMENTATO** — Liste e form di modelli di aereo e tratte.
+
+Il flusso implementato è: form login -> POST login -> token in memoria -> `/profilo` -> GET `/me` con Bearer -> visualizzazione del profilo. Il proxy descritto riguarda lo sviluppo locale; l’instradamento delle API in produzione resta da predisporre.
 
 La registrazione temporanea citata precedentemente non è una funzionalità del prodotto previsto: l’analisi richiede una procedura tecnica riservata. La sicurezza frontend non sostituisce quella backend.
 
-### Test — stato al 17 ottobre 2026
+### Test — stato al 18 ottobre 2026
 
 #### Test automatici del converter — FATTO
 
@@ -708,7 +721,41 @@ La ripetizione sequenziale verifica `existsByEmail()`; la prova con entrambi gli
 
 Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei duplicati concorrenti. La propagazione degli altri errori di integrità è presente nel codice, ma non è stata verificata con una prova dedicata in questa revisione. I risultati automatici storici del converter e del repository restano quelli registrati nelle rispettive sezioni.
 
-#### Scenari ancora DA VERIFICARE
+#### Frontend: build e test già eseguiti — FATTO per gli scenari registrati
+
+Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre: compilazione completata e output in `frontend/dist/frontend`. Nella precedente attività autorizzata sui test, l’assistente ha eseguito dalla cartella `frontend`:
+
+```powershell
+npm.cmd test -- --no-watch
+```
+
+**Esito effettivo già registrato: 2 file di test superati, 9 casi superati, nessun fallimento.** Questa esecuzione precede il presente aggiornamento della documentazione; non è stata ripetuta.
+
+| Gruppo | Casi | Risultato verificato |
+| --- | --- | --- |
+| Creazione di `App` | 1 | Componente radice creato |
+| Bearer su richiesta API protetta | 1 | Header Authorization presente con il token della sessione |
+| URL esterno assoluto, URL esterno relativo al protocollo, asset e `/api/v10/` | 4 | Bearer non aggiunto |
+| `401` riferito al token corrente | 1 | Sessione cancellata, navigazione al login con motivo e propagazione dell’errore |
+| `403` | 1 | Sessione conservata, nessuna navigazione e propagazione dell’errore |
+| `401` tardivo con nuova sessione | 1 | Nuovo token conservato, nessuna navigazione e propagazione dell’errore |
+
+Gli 8 casi dell’interceptor usano `HttpTestingController` per simulare le risposte HTTP e uno spy sul Router: non contattano il backend e non verificano il flusso completo nel browser. Il test di `App` verifica soltanto la creazione del componente.
+
+**Ulteriori test automatici frontend rinviati per scelta dello sviluppatore:** non vengono aggiunti test di AuthService o guard, né altri casi dell’interceptor. Questa scelta non modifica i risultati dei 9 casi già eseguiti.
+
+#### Frontend: prove complete nel browser — DA VERIFICARE
+
+L’implementazione è presente nei sorgenti, ma non è ancora registrata una conferma esplicita dell’intera sequenza nel browser con il backend reale:
+
+- Credenziali corrette: navigazione a `/profilo` e visualizzazione dei dati restituiti da `/me`.
+- Credenziali errate: messaggio generico e possibilità di riprovare; assenza di una nuova sessione.
+- Accesso diretto a `/profilo` senza sessione e refresh della pagina autenticata: ritorno al login.
+- Token revocato dal backend: premendo “Aggiorna profilo”, risposta `401`, ritorno al login e messaggio di sessione non valida.
+
+Le prove manuali backend già confermate e i test simulati dell’interceptor non costituiscono una conferma di questi scenari nel browser.
+
+#### Scenari backend ancora DA VERIFICARE
 
 - Test HTTP automatici di 401/403, content type, body JSON e header Bearer.
 - Login con email inesistente o account disattivato e ulteriori casi di password errata: `401` generico, nessun token. Il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
@@ -724,8 +771,9 @@ Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei dup
 2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
 3. **FATTO per gli scenari registrati** — `409` per email già presente e per violazione del vincolo causata da registrazioni concorrenti; prove Postman/SQL del 17 ottobre confermate con esiti `201`/`409` e una sola riga finale. Nessun nuovo test automatico aggiunto o eseguito.
 4. Prossimi sviluppi backend auth: predisposizione riservata degli account, validazione JWT e allineamento della policy di registrazione. Le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
-5. Sviluppare login e landing Angular.
-6. Sviluppare database, backend e frontend di modelli di aereo e tratte.
+5. **FATTO per gli scenari registrati** — Login Angular, token in memoria, Bearer alle API, profilo comune protetto e gestione del `401`. Build riportato dallo sviluppatore e 9 test frontend già superati. Prove complete nel browser ancora da confermare; ulteriori test automatici rinviati per scelta dello sviluppatore.
+6. Prossimi sviluppi frontend: landing distinte ADMIN/OPERATORI, logout e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata.
+7. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
 Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo. Le precedenti eccezioni autorizzate per la scrittura assistita di test restano riferite a quelle attività. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 

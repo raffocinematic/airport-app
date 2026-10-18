@@ -1,0 +1,47 @@
+<main class="login-page">
+  <h1>Accedi ad Airport App</h1>
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <label for="email">Email</label>
+
+    <input
+      id="email"
+      type="email"
+      autocomplete="username"
+      formControlName="email"
+      (blur)="normalizeEmail()"
+    />
+
+    @if (form.controls.email.touched && form.controls.email.invalid) {
+    <p class="field-error" role="alert">
+      Inserisci un'email valida, massimo 255 caratteri.
+    </p>
+    }
+
+    <label for="password">Password</label>
+
+    <input
+      id="password"
+      type="password"
+      autocomplete="current-password"
+      formControlName="password"
+    />
+
+    @if (form.controls.password.touched && form.controls.password.invalid) {
+    <p class="field-error" role="alert">
+      Inserisci una password, massimo 255 caratteri.
+    </p>
+    }
+
+    @if (errorMessage()) {
+    <p class="field-error" role="alert">
+      {{ errorMessage() }}
+    </p>
+    }
+
+    <button type="submit" [disabled]="loading()">
+      {{ loading() ? 'Accesso in corso...' : 'Accedi' }}
+    </button>
+
+  </form>
+</main>

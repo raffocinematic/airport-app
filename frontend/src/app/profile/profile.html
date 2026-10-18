@@ -1,0 +1,34 @@
+<main class="profile-page">
+  <h1>Il tuo profilo</h1>
+
+  @if (loading()) {
+  <p role="status">Caricamento del profilo...</p>
+  }
+
+  @if (errorMessage()) {
+  <p class="error-message" role="alert">
+    {{ errorMessage() }}
+  </p>
+  }
+
+  @if (profile(); as user) {
+  <dl>
+    <dt>Nome</dt>
+    <dd>{{ user.firstName }} {{ user.lastName }}</dd>
+
+    <dt>Email</dt>
+    <dd>{{ user.email }}</dd>
+
+    <dt>Ruolo</dt>
+    <dd>{{ user.role }}</dd>
+  </dl>
+  }
+
+  <button
+    type="button"
+    (click)="loadProfile()"
+    [disabled]="loading()"
+  >
+    Aggiorna profilo
+  </button>
+</main>
