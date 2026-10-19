@@ -1,6 +1,6 @@
 # Autenticazione con JWT - Airport App
 
-## Stato della verifica — aggiornamento del 18 ottobre 2026
+## Stato della verifica — aggiornamento del 19 ottobre 2026
 
 L’analisi iniziale del 14 ottobre era basata sui sorgenti. Il 16 ottobre sono stati completati i controlli del converter e sono stati eseguiti con JDK 17 i suoi 20 casi automatici: tutti superati, zero errori, zero fallimenti e zero casi saltati. È stato inoltre implementato l’incremento atomico di authVersion nel database. Lo sviluppatore ha confermato il successo dei tre test di integrazione PostgreSQL con Testcontainers e della prova Postman di revoca di due token. È stato inoltre implementato `POST /api/v1/auth/change-password`: lo sviluppatore ha confermato su Postman il cambio password, la revoca del vecchio token, l’utilizzo del nuovo token e i casi di errore descritti nella sezione Test. Nel repository è presente anche il nuovo test del caso positivo di aggiornamento password/versione. Durante l’aggiornamento backend l’assistente ha controllato i sorgenti senza eseguire test; le diverse verifiche sono registrate separatamente. Gli ulteriori test del cambio password sono rinviati per scelta dello sviluppatore.
 
@@ -14,9 +14,14 @@ Sono state successivamente completate la landing comune `/home` e l’uscita dal
 
 È stata inoltre completata la transizione “sfoglia libro” tra login e registrazione: View Transitions del router Angular e animazioni SCSS globali fanno ruotare le schede con prospettiva e ombreggiatura, in avanti verso la registrazione e nel verso opposto tornando alla login. Lo sviluppatore ne ha confermato il funzionamento manuale. L’assistente ha verificato separatamente la compilazione SCSS dei tre fogli interessati, senza eseguire un nuovo build Angular completo o test automatici per questa modifica. Movimento ridotto e fallback di compatibilità sono presenti nel codice, ma non hanno una prova dedicata registrata per la nuova animazione.
 
+Il 19 ottobre sono stati completati CORS e limite di login per il perimetro locale concordato. Il backend autorizza le quattro origini di sviluppo sulle porte 4200 e 4300 e limita a 10 in 60 secondi le richieste di login per IP, con risposta JSON `429`, `Retry-After` e `Cache-Control: no-store`. Lo sviluppatore ha confermato compilazione, avvio e prove manuali Postman, comprese scadenza della finestra e disponibilità del preflight e di `/me` durante il blocco. L’assistente ha esaminato i sorgenti e lo screenshot del `429`, senza eseguire nuovi build o test. I test automatici specifici sono rinviati per scelta dello sviluppatore; concorrenza e saturazione della mappa restano senza prove dedicate.
+
+Il 19 ottobre è stata inoltre completata la negazione delle richieste non coperte dalle regole esplicite di autorizzazione, tramite `.anyRequest().denyAll()`. I passaggi interni `DispatcherType.ERROR` restano consentiti per preservare la gestione degli errori; una richiesta diretta a `/error` resta bloccata. Lo sviluppatore ha confermato compilazione, riavvio e prove manuali con entrambi i ruoli, errori di validazione e JSON malformato, Swagger/OpenAPI, CORS e logout con revoca. L’assistente ha controllato i sorgenti senza eseguire le richieste o nuovi build e test automatici; gli esiti sono registrati nella sezione Test.
+
 - **FATTO**: implementazione presente nel codice; le verifiche svolte sono indicate esplicitamente nella sezione Test.
 - **PARZIALE**: presente con aspetti da completare.
 - **NON IMPLEMENTATO**: assente nei sorgenti esaminati.
+- **DA NON IMPLEMENTARE**: funzionalità esclusa per decisione progettuale.
 - **DA VERIFICARE**: comportamento o scenario non ancora confermato dalle prove registrate.
 
 ## Obiettivo
@@ -76,6 +81,10 @@ Nota: nel documento di analisi iniziale era citato Flyway, ma il progetto attual
 ### Sicurezza
 
 - `backend/src/main/java/it/raffo/backend/security/SecurityConfig.java`
+- `backend/src/main/java/it/raffo/backend/security/CorsProperties.java`
+- `backend/src/main/java/it/raffo/backend/security/LoginRateLimitProperties.java`
+- `backend/src/main/java/it/raffo/backend/security/LoginRateLimiter.java`
+- `backend/src/main/java/it/raffo/backend/security/LoginRateLimitFilter.java`
 - `backend/src/main/java/it/raffo/backend/security/AirportJwtAuthenticationConverter.java`
 - `backend/src/main/java/it/raffo/backend/security/CustomAuthenticationEntryPoint.java`
 - `backend/src/main/java/it/raffo/backend/security/CustomAccessDeniedHandler.java`
@@ -230,14 +239,16 @@ POST /api/v1/auth/login
 ### Passaggi logici
 
 1. Il client invia email e password.
-2. `AuthController` riceve la richiesta e valida `LoginRequest`.
-3. `AuthService.login()` normalizza l'email.
-4. Il service cerca l'utente nel database.
-5. Se l'utente non esiste, ritorna errore generico.
-6. Se l'utente non e attivo, ritorna errore generico.
-7. Se la password non corrisponde all'hash, ritorna errore generico.
-8. Se le credenziali sono valide, genera un JWT.
-9. Il client usera il token nelle chiamate successive.
+2. Il filtro CORS gestisce le richieste cross-origin e gli eventuali preflight.
+3. Per la login POST, `LoginRateLimitFilter` consulta il contatore dell’IP: se il limite è raggiunto restituisce `429` senza chiamare controller, database o verifica password.
+4. Se la richiesta passa, `AuthController` valida `LoginRequest`.
+5. `AuthService.login()` normalizza l'email.
+6. Il service cerca l'utente nel database.
+7. Se l'utente non esiste, ritorna errore generico.
+8. Se l'utente non e attivo, ritorna errore generico.
+9. Se la password non corrisponde all'hash, ritorna errore generico.
+10. Se le credenziali sono valide, genera un JWT.
+11. Il client usera il token nelle chiamate successive.
 
 ### Perche l'errore credenziali e generico
 
@@ -264,6 +275,8 @@ Claim principali:
 - `authVersion`: versione di autenticazione dell'utente.
 
 Al momento il token e firmato con algoritmo simmetrico `HS256` usando `app.jwt.secret`.
+
+**Decisione progettuale — DA NON IMPLEMENTARE:** la migrazione dell’emissione locale dei JWT a RS256 con chiave privata esterna è esclusa. L’autenticazione attuale mantiene HS256 fino alla futura integrazione con Keycloak, che gestirà autenticazione ed emissione dei token. Il backend continuerà a validare gli access token e ad applicare le autorizzazioni; la validazione di issuer e audience resta un’attività distinta, necessaria anche nell’integrazione futura.
 
 La password del database e il segreto JWT sono forniti tramite le variabili d’ambiente AIRPORT_APP_DB_PASSWORD e AIRPORT_APP_JWT_SECRET, senza valori predefiniti in application.properties. In sviluppo locale sono impostati nella configurazione di avvio IntelliJ, non condivisa nel repository.
 
@@ -351,11 +364,20 @@ Questo permette di usare regole come:
 
 In sintesi:
 
-- register e login sono pubblici;
+- register e login sono pubblici; la login POST è soggetta al limite di richieste per IP;
+- CORS sulle API autorizza soltanto le origini configurate; il preflight viene gestito prima del limite di login e dell’autenticazione;
 - `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` e `POST /api/v1/auth/change-password` richiedono token valido, account attivo e versione coincidente; il cambio password è accessibile a entrambi i ruoli;
 - `/api/v1/admin/**` richiede ruolo ADMIN;
 - `/api/v1/operatori/**` richiede ruolo OPERATORI;
-- tutte le altre API richiedono autenticazione.
+- i percorsi Swagger/OpenAPI dichiarati in `SecurityConfig` sono pubblici per GET;
+- i passaggi interni del server con `DispatcherType.ERROR` sono consentiti;
+- tutte le altre richieste sono negate da `.anyRequest().denyAll()`.
+
+Le regole vengono valutate nell’ordine dichiarato e si applica la prima corrispondente. La regola finale considera anche il metodo HTTP: `GET /api/v1/auth/me` è autorizzato per gli utenti autenticati, mentre `POST` sullo stesso percorso viene negato. Un percorso non coperto dalle regole precedenti, come `/api/v1/security-check`, restituisce `403` con token valido e `401` senza autenticazione valida.
+
+L’eccezione `DispatcherType.ERROR` riguarda soltanto il passaggio interno con cui il server costruisce una risposta di errore. Non rende pubblico il percorso `/error`: una richiesta diretta GET con token valido riceve `403`. La gestione degli errori conserva così il `400` previsto per JSON malformato, senza sostituirlo con un rifiuto di autorizzazione.
+
+Le regole `/api/v1/admin/**` e `/api/v1/operatori/**` continuano a coprire intere famiglie di percorsi e richiedono il rispettivo ruolo. Un nuovo endpoint sotto questi prefissi ricade nella regola già presente; un nuovo endpoint al di fuori delle regole esplicite richiede una nuova autorizzazione in `SecurityConfig`. Il blocco finale non implica che ogni URL inesistente restituisca `403`: un percorso già coperto da una regola e autorizzato può raggiungere MVC e restituire `404` se manca il controller.
 
 Le sessioni HTTP sono disabilitate:
 
@@ -364,6 +386,51 @@ SessionCreationPolicy.STATELESS
 ```
 
 Questo significa che il backend non salva una sessione HTTP tradizionale: ogni richiesta protetta deve portare il token. Account, ruolo e revoca sono comunque verificati leggendo il database per ogni richiesta autenticata.
+
+## Limite di login e CORS — FATTO per gli scenari registrati
+
+### Limite delle richieste di login
+
+`LoginRateLimiter` mantiene una mappa in memoria: per ogni IP conserva scadenza della finestra e numero di richieste. Il metodo `synchronized tryAcquire(ip)` esegue insieme controllo e aggiornamento sulla singola istanza del servizio; un bean `Clock.systemUTC()` fornisce l’ora.
+
+La prima richiesta apre una finestra di 60 secondi e viene contata come 1. Le prime 10 richieste vengono consentite; le successive vengono rifiutate fino alla scadenza. Vengono contate tutte le login POST che raggiungono il filtro, comprese quelle riuscite, con credenziali errate o con body non valido. Una login riuscita non azzera il contatore e un rifiuto non prolunga la finestra.
+
+A ogni controllo vengono rimosse le finestre scadute, comprese quelle con scadenza esattamente uguale all’istante corrente. La mappa conserva al massimo 10.000 IP: quando è piena, un nuovo IP viene rifiutato fino alla prima scadenza disponibile, senza eliminare contatori ancora attivi.
+
+`LoginRateLimitFilter` estende `OncePerRequestFilter` e controlla soltanto `POST /api/v1/auth/login`, confrontando metodo e servlet path. È costruito nel metodo `securityFilterChain` e inserito con `addFilterAfter(..., CorsFilter.class)`; non è un bean filtro registrato automaticamente anche nel container. Gli altri endpoint e i metodi diversi da POST sono esclusi.
+
+Al rifiuto il filtro restituisce `429 Too Many Requests`, body `ApiErrorResponse` con messaggio `Too many login attempts. Try again later.`, `fieldErrors` vuoto e timestamp UTC. Imposta `Retry-After` ai secondi rimanenti arrotondati per eccesso, almeno 1, e `Cache-Control: no-store`. La catena non prosegue verso il controller.
+
+Le proprietà lette da `LoginRateLimitProperties` sono:
+
+```properties
+app.security.login-rate-limit.max-requests=10
+app.security.login-rate-limit.window=60s
+app.security.login-rate-limit.max-tracked-ips=10000
+```
+
+Le proprietà sono abilitate con `@EnableConfigurationProperties` e validate: soglia e capienza almeno 1; durata presente e positiva.
+
+### Configurazione CORS dedicata
+
+`CorsProperties` legge la lista `app.security.cors.allowed-origins`, validando che sia presente, non vuota e senza elementi blank. La validazione attuale riguarda presenza e contenuto dei valori, non la sintassi completa degli indirizzi. Le origini locali configurate sono:
+
+- `http://localhost:4200`
+- `http://127.0.0.1:4200`
+- `http://localhost:4300`
+- `http://127.0.0.1:4300`
+
+Il bean `UrlBasedCorsConfigurationSource` applica a `/api/**` origini esplicite, metodi `GET`, `POST`, `OPTIONS`, header ammessi `Authorization`, `Content-Type`, `Accept`, ed espone `Retry-After` al JavaScript del frontend. `allowCredentials=false` è coerente con l’attuale invio esplicito del Bearer senza autenticazione basata su cookie.
+
+`http.cors(Customizer.withDefaults())` integra queste regole nella catena Spring Security. Un preflight consentito viene gestito prima dell’autenticazione e del limite. Le origini escluse ricevono il rifiuto CORS standard di Spring, che può avere body testuale `Invalid CORS request`; è distinto dai gestori JSON di autenticazione e autorizzazione. Per un’origine ammessa, anche le risposte di errore `401` e `429` ricevono gli header CORS previsti.
+
+CORS è una regola applicata dai browser e non sostituisce token e ruoli. Postman consente di verificare le risposte e gli header del backend ma non applica le restrizioni del browser. Il proxy Angular rimane invariato.
+
+### Limiti della soluzione attuale
+
+I contatori sono locali al processo, non persistono al riavvio e non sono condivisi fra più istanze. L’IP proviene da `request.getRemoteAddr()`: il filtro non legge manualmente `X-Forwarded-For`. Con il proxy Angular il backend vede il peer del proxy locale, quindi più utenti dietro lo stesso proxy possono condividere il limite. Il supporto a proxy fidati e a contatori distribuiti resta uno sviluppo futuro.
+
+Le origini autorizzate riguardano lo sviluppo locale; i domini di produzione non sono stati configurati. Il frontend non è stato modificato per aggiungere un messaggio specifico per `429`.
 
 ## Errori di sicurezza e controlli dei claim — FATTO
 
@@ -609,10 +676,13 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — Registrazione con normalizzazione email, controllo duplicati e vincolo univoco nel database. Gestione `409` anche per registrazioni concorrenti tramite `saveAndFlush()` e riconoscimento di SQLSTATE `23505`/vincolo `app_users_email_key`; causa originale conservata e altri errori propagati. Prove manuali del 17 ottobre confermate dallo sviluppatore.
 - **FATTO** — Hash password con `BCryptPasswordEncoder`.
 - **FATTO** — Login con verifica password e account attivo; errore generico per credenziali non valide.
+- **FATTO** — Limite di 10 richieste di login per IP in 60 secondi, contatori in memoria con capienza di 10.000 IP, filtro dopo CORS e risposta JSON `429` con `Retry-After` e `Cache-Control: no-store`; prove manuali del 19 ottobre confermate dallo sviluppatore, nuovi test automatici rinviati.
+- **FATTO** — CORS dedicato su `/api/**` per le quattro origini locali sulle porte 4200/4300, preflight prima dell’autenticazione ed esposizione di `Retry-After`. Origini ammesse/escluse e accesso a `/me` senza token verificati manualmente dallo sviluppatore.
 - **FATTO** — Emissione JWT HS256 dopo register/login e cambio password, durata 900 secondi.
 - **FATTO** — Resource Server per validazione JWT; controlli espliciti issuer/audience ancora assenti.
 - **FATTO** — Controllo account attivo e `authVersion` a ogni richiesta autenticata; authority dal ruolo corrente nel database.
 - **FATTO** — `/me`, ping ADMIN/OPERATORI e autorizzazione separata delle due aree.
+- **FATTO** — Blocco finale delle richieste non coperte dalle regole esplicite tramite `.anyRequest().denyAll()`, con eccezione per i passaggi interni `DispatcherType.ERROR`. Prove manuali del 19 ottobre confermate per entrambi i ruoli, metodi non autorizzati, accesso diretto a `/error` e regressioni dei flussi esistenti.
 - **FATTO** — Logout `204` e incremento atomico di `authVersion` tramite UPDATE; test concorrente del repository superato e revoca su `/me` di due token precedenti confermata dallo sviluppatore.
 - **FATTO** — Cambio password autenticato con verifica della password attuale, validazione della nuova password, UPDATE condizionale di hash/versione e nuovo JWT dopo il commit; risposta `200` con `Cache-Control: no-store`. Prove Postman confermate dallo sviluppatore; copertura automatica limitata al caso positivo del repository presente nei sorgenti.
 - **FATTO** — Errori applicativi per duplicati, credenziali errate, validazione DTO e nuova password non ammessa.
@@ -641,18 +711,14 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, oltre al flusso minimo già implementato.
 
 - **FATTO** — Liquibase anziché Flyway: continuare con Liquibase e riallineare la documentazione in una revisione successiva.
-- **NON IMPLEMENTATO** — RS256 con chiave privata esterna; attualmente firma HS256.
+- **DA NON IMPLEMENTARE** — Migrazione dell’emissione locale dei JWT a RS256 con chiave privata esterna. Per decisione dello sviluppatore, l’attuale autenticazione mantiene HS256 fino alla futura integrazione con Keycloak, che gestirà autenticazione ed emissione dei token. Il backend continuerà a validare i token e applicare le autorizzazioni.
 - **NON IMPLEMENTATO** — Claim `aud`, `jti` e controlli espliciti di issuer/audience; il token attuale contiene anche email.
 - **PARZIALE** — BCrypt mantenuto per scelta dello sviluppatore anziché migrazione ad Argon2id. Il cambio password richiede almeno 15 caratteri e al massimo 72 byte UTF-8; la registrazione conserva 8–128 caratteri e non ha il controllo esplicito dei byte. L’allineamento della policy di registrazione resta separato dal cambio password completato.
 - **NON IMPLEMENTATO** — Password temporanee, scadenza, cambio obbligatorio e blocco delle API business; campi `mustChangePassword`, `temporaryPasswordExpiresAt`, `updatedAt` assenti.
-- **NON IMPLEMENTATO** — Limite ai tentativi di login e configurazione CORS dedicata.
-- **NON IMPLEMENTATO** — Negazione dei percorsi non dichiarati: attualmente richiedono soltanto autenticazione.
+- **FATTO per gli scenari registrati** — Limite alle richieste di login: 10 per IP in 60 secondi, risposta `429` e attesa tramite `Retry-After`; implementazione locale in memoria e prove manuali confermate. Concorrenza e saturazione della mappa restano senza prove dedicate; nuovi test automatici rinviati per scelta dello sviluppatore.
+- **FATTO per gli scenari registrati** — Configurazione CORS dedicata per le origini locali autorizzate, integrata nella catena Spring Security prima del limite di login. Configurazione di produzione e proxy fidati restano separati.
+- **FATTO per gli scenari registrati** — Negazione delle richieste non coperte dalle regole esplicite con `.anyRequest().denyAll()`. Eccezione limitata ai passaggi interni `DispatcherType.ERROR`; le famiglie `/admin/**` e `/operatori/**` conservano le rispettive regole di ruolo. Prove manuali del 19 ottobre confermate dallo sviluppatore; nessun nuovo test automatico aggiunto o eseguito.
 - **DA VERIFICARE** — Configurazione di produzione per HTTPS e segreti esterni; ambiente distribuito non esaminato.
-
-### Backend business
-
-- **NON IMPLEMENTATO** — Modulo `aircraftmodels`, tabella `aircraft_models`, GET/POST `/api/v1/aircraft-models` solo ADMIN.
-- **NON IMPLEMENTATO** — Modulo `routes`, tabella `routes`, GET/POST `/api/v1/routes` solo ADMIN.
 
 ### Frontend minimo
 
@@ -684,7 +750,7 @@ Il flusso implementato è: login -> collegamento “Registrati” -> form di reg
 
 La registrazione pubblica OPERATORI è un requisito concordato il 18 ottobre e sostituisce la precedente esclusione della registrazione pubblica nell’analisi iniziale. La creazione degli ADMIN resta riservata e non è disponibile nel form. La sicurezza frontend non sostituisce quella backend.
 
-### Test — stato al 18 ottobre 2026
+### Test — stato al 19 ottobre 2026
 
 #### Test automatici del converter — FATTO
 
@@ -784,6 +850,49 @@ La ripetizione sequenziale verifica `existsByEmail()`; la prova con entrambi gli
 
 Non sono stati aggiunti o eseguiti nuovi test automatici per la gestione dei duplicati concorrenti. La propagazione degli altri errori di integrità è presente nel codice, ma non è stata verificata con una prova dedicata in questa revisione. I risultati automatici storici del converter e del repository restano quelli registrati nelle rispettive sezioni.
 
+#### Percorsi non dichiarati: prove manuali del 19 ottobre 2026 — FATTO
+
+Lo sviluppatore ha confermato compilazione e riavvio del backend e l’esito positivo delle seguenti prove guidate con Postman e browser. Le richieste con Bearer sono state eseguite con token validi, verificati prima su `/me`.
+
+| Scenario | Esito confermato dallo sviluppatore |
+| --- | --- |
+| `GET /api/v1/auth/me` con token ADMIN e OPERATORI | `200`, identità e ruolo corrispondenti |
+| `GET /api/v1/security-check`, fuori dalle regole esplicite, con token ADMIN e OPERATORI | `403`, errore JSON `Access denied` |
+| Stesso percorso senza token | `401` |
+| `POST /api/v1/auth/me` con token ADMIN valido e body assente | `403`: il metodo POST non è autorizzato dalla regola GET |
+| `GET /error` con token ADMIN valido | `403`: l’accesso diretto non è un passaggio interno ERROR |
+| Token ADMIN su `/api/v1/admin/ping` e token OPERATORI su `/api/v1/operatori/ping` | `200` per entrambi |
+| Token ADMIN su `/api/v1/operatori/ping` e token OPERATORI su `/api/v1/admin/ping` | `403` per entrambi: nessuna ereditarietà automatica fra i due ruoli |
+| `POST /api/v1/auth/change-password` con token valido e body `{}` | `400` di validazione, password invariata |
+| `POST /api/v1/auth/login` senza token con JSON malformato, body contenente soltanto `{` | `400`, gestione dell’errore preservata |
+| Swagger UI nel browser e `GET /v3/api-docs` senza autenticazione | Interfaccia caricata con gli endpoint; documento OpenAPI JSON `200` |
+| Preflight `OPTIONS /api/v1/auth/login`, origine `http://localhost:4200`, metodo richiesto POST e header `content-type` | `200`; `Access-Control-Allow-Origin` corrispondente, metodi consentiti comprendenti POST e header consentiti comprendenti `content-type` |
+| Stesso preflight con origine `http://localhost:9999` | `403`, senza `Access-Control-Allow-Origin` |
+| `/me` con token OPERATORI valido, logout con lo stesso token, riuso del token su `/me` | `200 -> 204 -> 401`, revoca confermata |
+
+L’assistente ha controllato `SecurityConfig` e guidato le prove; non ha eseguito queste richieste, nuovi build o test automatici. I test HTTP automatici della regola finale e dei passaggi ERROR restano rinviati per scelta dello sviluppatore. I risultati automatici storici del converter e del repository rimangono distinti.
+
+#### CORS e limite di login: prove Postman del 19 ottobre 2026 — FATTO per gli scenari registrati
+
+Lo sviluppatore ha confermato compilazione e avvio del backend e l’esito delle prove guidate seguenti. Postman è stato usato per richieste reali al backend locale; non sono nuovi test Java o Playwright.
+
+| Scenario | Esito confermato dallo sviluppatore |
+| --- | --- |
+| Preflight `OPTIONS /api/v1/auth/login` con origine locale autorizzata e metodo richiesto POST | `200`, origine e metodi/header consentiti nella risposta; prova ripetuta per le quattro origini configurate |
+| Stesso preflight con `Origin: http://localhost:9999` | `403`, senza `Access-Control-Allow-Origin` |
+| `GET /api/v1/auth/me` senza token, con origine autorizzata | `401` con errore JSON e `Access-Control-Allow-Origin` |
+| Dopo riavvio, undici login errate consecutive dallo stesso IP entro la finestra, tramite Runner locale | Prime dieci risposte `401`; undicesima `429` con JSON previsto |
+| Risposta `429` con origine autorizzata | `Retry-After` positivo, `Cache-Control: no-store`, origine consentita ed esposizione di `Retry-After` |
+| Attesa indicata da `Retry-After`, più un secondo, senza riavviare il backend; nuova login errata | `401`: il limite consente nuovamente la richiesta |
+| Login successiva con credenziali corrette | `200` |
+| Durante il blocco, preflight consentito e `GET /me` senza token; immediata nuova login errata | Rispettivamente `200`, `401` e ancora `429`: il blocco della login non impedisce preflight e accesso alla catena di autenticazione delle altre API |
+
+**Ripetizione manuale completata con successo — 19 ottobre 2026:** lo sviluppatore ha confermato nuovamente la sequenza Postman: dieci login errate con `401`, undicesima con `429`; durante il blocco, preflight `200` e `/me` senza token `401`, con gli header CORS previsti. La login immediatamente successiva restituisce ancora `429`; dopo l’attesa indicata da `Retry-After`, senza riavvio, torna a restituire `401`.
+
+L’assistente ha controllato i sorgenti e lo screenshot della risposta `429`, che mostra status e body attesi; non ha eseguito queste richieste, nuovi build o test automatici. I risultati automatici storici riportati nelle altre sezioni rimangono distinti.
+
+**Nuovi test automatici specifici rinviati per scelta dello sviluppatore.** Concorrenza, IP distinti, saturazione della mappa, rifiuto delle configurazioni invalide e conteggio di richieste con body malformato sono aspetti presenti nella logica ma senza prove dedicate registrate. La scelta di rinviare i test non rende assente l’implementazione completata per il perimetro concordato.
+
 #### Frontend: build e test già eseguiti — FATTO per gli scenari registrati
 
 Lo sviluppatore ha riportato il successo di `npm.cmd run build` il 18 ottobre. Nella successiva attività di restyling l’assistente ha eseguito nuovamente il build finale, con compilazione riuscita, nessun avviso sui limiti degli stili e output in `frontend/dist/frontend`. Questi risultati riguardano il precedente restyling di login e registrazione e non attestano una nuova compilazione della landing o del logout. Il presente aggiornamento documentale non ripete il build.
@@ -859,9 +968,9 @@ Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; qu
 
 #### Scenari backend ancora DA VERIFICARE
 
-- Test HTTP automatici di 401/403, content type, body JSON e header Bearer.
-- Login con email inesistente o account disattivato e ulteriori casi di password errata: `401` generico, nessun token. Il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
-- Token ADMIN su ping OPERATORI: `403`, ancora da confermare. Il ping ADMIN `200` è stato confermato nella procedura del primo ADMIN; non dedurre il caso OPERATORI dai test unitari dei ruoli.
+- Test HTTP automatici di 401/403, content type, body JSON e header Bearer, compresi blocco finale e passaggi ERROR. Le prove manuali del blocco e dei ruoli sono confermate nella sezione dedicata del 19 ottobre; non sono nuovi test automatici.
+- Test automatici specifici di CORS e limite di login rinviati per scelta dello sviluppatore; concorrenza, IP distinti, saturazione e configurazioni invalide restano senza prove dedicate. I risultati manuali del 19 ottobre sono registrati separatamente.
+- Login con account disattivato e ulteriori casi di password errata: `401` generico, nessun token. La sequenza con credenziali errate/email non registrata è confermata nelle prove del limite di login del 19 ottobre; il rifiuto della vecchia password dopo il cambio è già confermato nella tabella Postman.
 - Token con firma alterata o scaduto: `401`; issuer/audience errati dopo i relativi controlli, ancora da implementare.
 - Estensione della revoca dei due token ai ping e a richieste HTTP di logout concorrenti. La revoca su `/me` è confermata manualmente; la concorrenza dell’UPDATE è verificata nel test del repository.
 - Disattivazione dell’account dopo emissione token verificata attraverso una richiesta HTTP e database reale.
@@ -872,12 +981,14 @@ Gli ulteriori test automatici restano rinviati per scelta dello sviluppatore; qu
 1. **FATTO per gli scenari registrati** — Errori JSON 401/403, controlli dei claim e 20 casi del converter; incremento atomico di `authVersion`, tre test PostgreSQL del repository e prova Postman di revoca di due token su `/me`.
 2. **FATTO per gli scenari registrati** — Cambio password autenticato, aggiornamento atomico di hash/versione e nuovo JWT dopo il commit; prove Postman confermate e test positivo del repository presente. Ulteriori test rinviati per scelta dello sviluppatore.
 3. **FATTO per gli scenari registrati** — `409` per email già presente e per violazione del vincolo causata da registrazioni concorrenti; prove Postman/SQL del 17 ottobre confermate con esiti `201`/`409` e una sola riga finale. Nessun nuovo test automatico aggiunto o eseguito.
-4. Prossimi sviluppi backend auth: automazione della predisposizione riservata degli ADMIN, validazione JWT e allineamento della policy di registrazione. La procedura manuale del primo ADMIN è già confermata; le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
-5. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria e Bearer alle API. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Build, controlli grafici e 9 test frontend del precedente restyling restano risultati storici distinti, non nuove esecuzioni sulla home o sul logout.
-6. **FATTO per gli scenari registrati** — Landing comune `/home` protetta, illustrazione dell’aereo in costruzione, intestazione con utente a sinistra, marchio centrato e Logout a destra. Logout frontend con uscita locale e avviso quando la revoca non è confermata; prove con backend attivo e spento confermate. Timeout configurato a 10 secondi, con prova dedicata ancora da verificare. `/profilo` resta disponibile separatamente.
-7. **FATTO per gli scenari registrati** — Animazione “sfoglia libro” tra login e registrazione, con verso opposto al ritorno, View Transitions e SCSS globali, durata di 650 ms e nessuna nuova dipendenza. Funzionamento manuale confermato dallo sviluppatore e compilazione SCSS verificata dall’assistente; compatibilità e movimento ridotto presenti nel codice, con prove dedicate ancora da verificare.
-8. Prossimi sviluppi frontend: aree distinte ADMIN/OPERATORI con menu amministrativo e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata. Ulteriori test automatici rinviati per scelta dello sviluppatore.
-9. Sviluppare database, backend e frontend di modelli di aereo e tratte.
+4. **FATTO per gli scenari registrati** — CORS locale e limite di 10 login per IP in 60 secondi, `429` con attesa e contatori in memoria. Prove Postman del 19 ottobre confermate, compresi ripristino e disponibilità di preflight e `/me` durante il blocco. Nuovi test automatici rinviati per scelta dello sviluppatore; concorrenza e saturazione restano senza prove dedicate.
+5. **FATTO per gli scenari registrati** — Blocco delle richieste non coperte dalle regole esplicite con `denyAll()` ed eccezione per i passaggi interni ERROR. Prove manuali del 19 ottobre confermate per ADMIN e OPERATORI, metodi non autorizzati, `/error`, errori `400`, Swagger/OpenAPI, CORS e logout con revoca. Nessun nuovo test automatico aggiunto o eseguito.
+6. Prossimi sviluppi backend auth: automazione della predisposizione riservata degli ADMIN, validazione JWT e allineamento della policy di registrazione. La migrazione dell’emissione locale a RS256 è **DA NON IMPLEMENTARE**: si mantiene HS256 fino alla futura integrazione con Keycloak. I controlli di issuer e audience restano separati e da completare. La procedura manuale del primo ADMIN è già confermata; le verifiche residue restano documentate senza introdurre nuovi test in questa revisione.
+7. **FATTO per gli scenari registrati** — Backend e frontend di login e registrazione pubblica OPERATORI; ritorno alla login dopo la registrazione, token della login in memoria e Bearer alle API. Flusso principale e predisposizione del primo ADMIN confermati dallo sviluppatore. Build, controlli grafici e 9 test frontend del precedente restyling restano risultati storici distinti, non nuove esecuzioni sulla home o sul logout.
+8. **FATTO per gli scenari registrati** — Landing comune `/home` protetta, illustrazione dell’aereo in costruzione, intestazione con utente a sinistra, marchio centrato e Logout a destra. Logout frontend con uscita locale e avviso quando la revoca non è confermata; prove con backend attivo e spento confermate. Timeout configurato a 10 secondi, con prova dedicata ancora da verificare. `/profilo` resta disponibile separatamente.
+9. **FATTO per gli scenari registrati** — Animazione “sfoglia libro” tra login e registrazione, con verso opposto al ritorno, View Transitions e SCSS globali, durata di 650 ms e nessuna nuova dipendenza. Funzionamento manuale confermato dallo sviluppatore e compilazione SCSS verificata dall’assistente; compatibilità e movimento ridotto presenti nel codice, con prove dedicate ancora da verificare.
+10. Prossimi sviluppi frontend: aree distinte ADMIN/OPERATORI con menu amministrativo e cambio password. La scadenza è attualmente rilevata su risposta `401`; la gestione preventiva resta separata. Ulteriori test automatici rinviati per scelta dello sviluppatore.
+11. Sviluppare database, backend e frontend di modelli di aereo e tratte.
 
 Il codice applicativo resta scritto dallo sviluppatore junior con guida passo per passo, salvo le eccezioni esplicitamente autorizzate: test e restyling delle pagine di autenticazione. La predisposizione del primo ADMIN è stata eseguita e confermata dallo sviluppatore. Questo aggiornamento riguarda esclusivamente la documentazione: nessuna modifica al codice applicativo o ai test, nessuna esecuzione di test e nessun commit.
 

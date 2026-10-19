@@ -6,7 +6,7 @@
 
 **Destinatario:** sviluppatore Java junior
 
-**Stato implementativo:** login, registrazione, landing comune `/home` e logout frontend sono completati per gli scenari registrati e confermati dallo sviluppatore. Dopo la login si apre `/home`; `/profilo` resta disponibile separatamente. Il logout è stato provato con backend attivo e spento; il timeout di 10 secondi è configurato ma non è stato verificato con una richiesta lasciata in attesa fino alla scadenza. Le aree distinte per ruolo, il menu amministrativo e il cambio password frontend restano sviluppi successivi. Dettagli e verifiche sono registrati in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
+**Stato implementativo:** login, registrazione, landing comune `/home` e logout frontend sono completati per gli scenari registrati e confermati dallo sviluppatore. Dopo la login si apre `/home`; `/profilo` resta disponibile separatamente. Il logout è stato provato con backend attivo e spento; il timeout di 10 secondi è configurato ma non è stato verificato con una richiesta lasciata in attesa fino alla scadenza. Le aree distinte per ruolo, il menu amministrativo e il cambio password frontend restano sviluppi successivi. Dettagli e verifiche sono registrati in [Backend_Auth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md).
 
 ## 1. Il tuo cliente
 
@@ -128,7 +128,7 @@ Dalla login, il collegamento “Non hai un account? Registrati” apre `/registr
 
 La registrazione riuscita restituisce `201` e il frontend torna alla login con un messaggio di conferma, senza salvare il token ricevuto. L’email duplicata produce `409`; gli errori del form e della chiamata sono mostrati all’utente e gli invii ripetuti sono bloccati durante la richiesta. Login e registrazione condividono una grafica azzurra adattabile agli schermi piccoli, con icona decorativa dell’aereo.
 
-Il primo ADMIN è predisposto con una procedura tecnica riservata, senza password predefinite nel repository. La procedura manuale locale già confermata consiste nella registrazione dell’account come OPERATORI, nella promozione mirata tramite pgAdmin con incremento di `auth_version` e in una nuova login con verifica dell’accesso ADMIN. Non esistono un endpoint pubblico per creare ADMIN, uno script automatico di inizializzazione o un pannello di gestione utenti in questa fase. La procedura è descritta in [Backend_Auth_JWT_Flow.md](Backend_Auth_JWT_Flow.md).
+Il primo ADMIN è predisposto con una procedura tecnica riservata, senza password predefinite nel repository. La procedura manuale locale già confermata consiste nella registrazione dell’account come OPERATORI, nella promozione mirata tramite pgAdmin con incremento di `auth_version` e in una nuova login con verifica dell’accesso ADMIN. Non esistono un endpoint pubblico per creare ADMIN, uno script automatico di inizializzazione o un pannello di gestione utenti in questa fase. La procedura è descritta in [Backend_Auth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md).
 
 Email univoca, normalizzata eliminando gli spazi esterni e convertendola in minuscolo. Se si consegna una password temporanea, questa deve scadere e imporre il cambio: fino ad allora l’utente può soltanto consultare il proprio stato, cambiare password e uscire. Il completamento di questo passaggio precede l’accesso alla landing page.
 
@@ -330,7 +330,7 @@ La scadenza dell’accesso riporta al login con un messaggio chiaro. Non ritenta
 | AC-21 | Logout frontend con backend attivo | `204`, cancellazione locale del token e ritorno alla login senza avviso di revoca non confermata |
 | AC-22 | Logout con backend non raggiungibile | Uscita locale e ritorno alla login con avviso di revoca non confermata |
 
-Questa tabella definisce i risultati attesi, non certifica l’esecuzione di ogni scenario. Il flusso principale di login e registrazione, la predisposizione manuale del primo ADMIN, la home e le prove guidate di logout con backend attivo e spento sono confermati; i casi specifici e i limiti delle verifiche restano distinti in `Backend_Auth_JWT_Flow.md`.
+Questa tabella definisce i risultati attesi, non certifica l’esecuzione di ogni scenario. Il flusso principale di login e registrazione, la predisposizione manuale del primo ADMIN, la home e le prove guidate di logout con backend attivo e spento sono confermati; i casi specifici e i limiti delle verifiche restano distinti in `LoginRegisterAuth_JWT_Flow.md`.
 
 Verificare autorizzazioni nel backend, vincoli del database, validazioni e due percorsi end-to-end: ADMIN inserisce un modello e una tratta; OPERATORI non può accedere alle stesse funzioni. Non basta verificare che un pulsante sia nascosto.
 
@@ -349,7 +349,7 @@ La migrazione richiederà un piano per credenziali, ruoli, sessioni e revoca: il
 Ordine di lavoro:
 
 1. Predisporre Java/Spring Boot, Angular/TypeScript e PostgreSQL.
-2. **FATTO per il flusso minimo** — Migrazione utenti, registrazione pubblica OPERATORI, predisposizione manuale del primo ADMIN, login JWT, landing comune `/home` con lavori in corso e logout frontend. `/profilo` resta disponibile separatamente. Completamenti di sicurezza e verifiche residue, inclusa la prova dedicata del timeout, sono indicati in `Backend_Auth_JWT_Flow.md`.
+2. **FATTO per il flusso minimo** — Migrazione utenti, registrazione pubblica OPERATORI, predisposizione manuale del primo ADMIN, login JWT, landing comune `/home` con lavori in corso e logout frontend. `/profilo` resta disponibile separatamente. Completamenti di sicurezza e verifiche residue, inclusa la prova dedicata del timeout, sono indicati in `LoginRegisterAuth_JWT_Flow.md`.
 3. Realizzare landing ADMIN, menù sinistro, segnaposto dell’immagine e benvenuto OPERATORI.
 4. Implementare modello dati, API e form per i modelli di aereo.
 5. Implementare modello dati, API e form per le tratte.
