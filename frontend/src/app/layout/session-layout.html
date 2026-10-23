@@ -1,0 +1,80 @@
+<div class="home-page">
+
+  <header class="home-header">
+    <div class="user-welcome">
+      @if (profile(); as user) {
+      <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
+
+      <span class="user-role">
+        {{ user.role === 'ADMIN' ? 'Admin' : 'Operatore' }}
+      </span>
+      }
+    </div>
+
+    <span class="home-brand">Airport App</span>
+
+    <button
+      class="logout-button"
+      type="button"
+      (click)="logout()"
+      [disabled]="loggingOut()"
+      [attr.aria-busy]="loggingOut()"
+    >
+      {{ loggingOut() ? 'Uscita…' : 'Logout' }}
+    </button>
+  </header>
+
+  <main class="home-content">
+    @if (loading()) {
+    <p role="status">Caricamento dei dati dell’utente...</p>
+    }
+
+    @if (errorMessage()) {
+    <p class="error-message" role="alert">
+      {{ errorMessage() }}
+    </p>
+
+    <button
+      type="button"
+      (click)="loadProfile()"
+      [disabled]="loggingOut()"
+    >
+      Riprova
+    </button>
+    }
+
+    @if (profile(); as user) {
+    <div
+      class="session-content"
+      [class.session-content--admin]="user.role === 'ADMIN'"
+    >
+      @if (user.role === 'ADMIN') {
+      <nav class="admin-menu" aria-label="Menu amministrazione">
+        <a
+          routerLink="/admin"
+          routerLinkActive="admin-menu__link--active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          ariaCurrentWhenActive="page"
+        >
+          SessionLayout
+        </a>
+
+        <a
+          routerLink="/admin/routes"
+          routerLinkActive="admin-menu__link--active"
+          ariaCurrentWhenActive="page"
+        >
+          Tratte
+        </a>
+      </nav>
+      }
+
+      <div class="session-view">
+        <router-outlet />
+      </div>
+    </div>
+    }
+
+  </main>
+
+</div>

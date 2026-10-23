@@ -46,6 +46,25 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Il service rileva la regola violata
+     *  - lancia InvalidRouteException
+     *  - il gestore globale intercetta l'eccezione
+     *  - restituisce 400 con messaggio e fieldErrors
+     * @param exception
+     * @return
+     */
+    @ExceptionHandler(InvalidRouteException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidRoute(
+            InvalidRouteException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                exception.getFieldErrors()
+        );
+    }
+
     // --------------------------------------------------------------------------------
 
 

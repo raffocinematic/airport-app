@@ -118,7 +118,7 @@ Durata proposta dell'access token: **15 minuti**. Nella prima versione non esist
 
 Il pulsante Logout della home invia `POST /api/v1/auth/logout` con il Bearer corrente. Durante la richiesta mostra “Uscita…” e impedisce invii ripetuti. La risposta `204` conferma la revoca lato server dei token precedenti dello stesso utente, anche nelle altre sessioni; il frontend cancella il token locale e torna alla login con sostituzione della voce corrente nella cronologia.
 
-Se la richiesta fallisce o supera il timeout configurato di 10 secondi, il frontend completa comunque l’uscita locale e torna a `/login?reason=logout-unconfirmed`, mostrando: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” Il messaggio viene rimosso all’inizio di un nuovo tentativo di login. In questo caso la revoca sul server non è confermata. Il `401` della richiesta di logout lascia alla Home la gestione della navigazione; gli altri `401` continuano a essere gestiti dall’interceptor come sessione scaduta o non valida.
+Se la richiesta fallisce o supera il timeout configurato di 10 secondi, il frontend completa comunque l’uscita locale e torna a `/login?reason=logout-unconfirmed`, mostrando: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” Il messaggio viene rimosso all’inizio di un nuovo tentativo di login. In questo caso la revoca sul server non è confermata. Il `401` della richiesta di logout lascia alla SessionLayout la gestione della navigazione; gli altri `401` continuano a essere gestiti dall’interceptor come sessione scaduta o non valida.
 
 Lo sviluppatore ha confermato le prove con backend attivo e spento e la nuova login dopo il riavvio. La prova dedicata del timeout resta da verificare; i dettagli sono distinti nel documento del flusso JWT.
 
@@ -146,13 +146,13 @@ La scheda centrale mostra “Lavori in corso”, il testo “Stiamo preparando l
 
 Dopo il login, l’ADMIN arriva a `/admin`. La pagina presenta:
 
-- **A sinistra:** menù persistente con le voci `Home`, `Modelli di aereo` e `Tratte`.
+- **A sinistra:** menù persistente con le voci `SessionLayout`, `Modelli di aereo` e `Tratte`.
 - **Al centro:** immagine dell’aeroporto, che sarà fornita successivamente dal committente.
 - **Nell’area utente:** nome, ruolo e comando `Esci`.
 
 In attesa dell’immagine usare un riquadro neutro con la dicitura “Immagine dell’aeroporto in arrivo”. Non generare un’immagine sostitutiva. La futura immagine deve mantenere le proporzioni e avere un testo alternativo. La sostituzione avverrà tramite asset dell’applicazione: non è richiesto un pannello di caricamento immagini.
 
-Selezionando una voce, il contenuto centrale mostra la relativa lista e il form di inserimento; il menù rimane disponibile. `Home` riporta all’immagine. Evidenziare la voce selezionata. Su schermi piccoli il menù può diventare richiudibile.
+Selezionando una voce, il contenuto centrale mostra la relativa lista e il form di inserimento; il menù rimane disponibile. `SessionLayout` riporta all’immagine. Evidenziare la voce selezionata. Su schermi piccoli il menù può diventare richiudibile.
 
 Gli OPERATORI arrivano a `/operatori`, con un messaggio di benvenuto e l’indicazione che le funzioni operative saranno disponibili in seguito. Non vedono il menù amministrativo.
 

@@ -1,0 +1,250 @@
+<section class="routes-page" aria-labelledby="admin-routes-title">
+  <h1 id="admin-routes-title">Tratte</h1>
+
+  <p>Consulta e aggiungi le tratte dell’aeroporto.</p>
+
+  @if (!formVisible()) {
+  <button
+    class="route-action"
+    type="button"
+    (click)="openForm()"
+    [disabled]="saving() || loading()"
+  >
+    Aggiungi tratta
+  </button>
+  }
+
+  @if (formVisible()) {
+  <form
+    class="route-form"
+    [formGroup]="form"
+    (ngSubmit)="submit()"
+    aria-labelledby="create-route-title"
+    novalidate
+  >
+    <h2 id="create-route-title">Aggiungi tratta</h2>
+
+    <p>I campi contrassegnati con * sono obbligatori.</p>
+
+    <p>Origine: <strong>Napoli</strong></p>
+
+    <label for="destinationCity">Città di destinazione *</label>
+    <input
+      id="destinationCity"
+      type="text"
+      formControlName="destinationCity"
+      maxlength="100"
+      required
+      (blur)="normalizeDestination()"
+    />
+
+    @if (
+    form.controls.destinationCity.touched
+    && form.controls.destinationCity.invalid
+    ) {
+    <p class="field-error" role="alert">
+      Inserisci una destinazione, massimo 100 caratteri.
+      Non può essere composta soltanto da spazi.
+    </p>
+    }
+
+    @if (
+    form.controls.destinationCity.touched
+    && form.hasError('destinationIsOrigin')
+    ) {
+    <p class="field-error" role="alert">
+      La destinazione deve essere diversa da Napoli.
+    </p>
+    }
+
+    @if (serverFieldErrors().destinationCity; as message) {
+    <p class="field-error" role="alert">
+      {{ message }}
+    </p>
+    }
+
+    <label for="destinationCountryCode">Paese di destinazione *</label>
+    <select
+      id="destinationCountryCode"
+      formControlName="destinationCountryCode"
+      required
+    >
+      <option [ngValue]="null">Seleziona un paese</option>
+      <option value="IT">Italia</option>
+      <option value="GB">Regno Unito</option>
+    </select>
+
+    @if (
+    form.controls.destinationCountryCode.touched
+    && form.controls.destinationCountryCode.invalid
+    ) {
+    <p class="field-error" role="alert">
+      Seleziona il paese di destinazione.
+    </p>
+    }
+
+    @if (serverFieldErrors().destinationCountryCode; as message) {
+    <p class="field-error" role="alert">
+      {{ message }}
+    </p>
+    }
+
+    <label for="returnEnabled">Collegamento di ritorno *</label>
+    <select
+      id="returnEnabled"
+      formControlName="returnEnabled"
+      required
+    >
+      <option [ngValue]="null">Seleziona un’opzione</option>
+      <option [ngValue]="true">Sì</option>
+      <option [ngValue]="false">No</option>
+    </select>
+
+    @if (
+    form.controls.returnEnabled.touched
+    && form.controls.returnEnabled.invalid
+    ) {
+    <p class="field-error" role="alert">
+      Indica se il collegamento di ritorno è disponibile.
+    </p>
+    }
+
+    @if (
+    form.hasError('returnRequired')
+    && (
+    form.controls.destinationCity.touched
+    || form.controls.returnEnabled.touched
+    )
+    ) {
+    <p class="field-error" role="alert">
+      Per Milano e Roma il collegamento di ritorno è obbligatorio.
+    </p>
+    }
+
+    @if (serverFieldErrors().returnEnabled; as message) {
+    <p class="field-error" role="alert">
+      {{ message }}
+    </p>
+    }
+
+    @if (saveErrorMessage()) {
+    <p class="field-error" role="alert">
+      {{ saveErrorMessage() }}
+    </p>
+    }
+
+    <button
+      class="route-action"
+      type="submit"
+      [disabled]="saving() || loading()"
+    >
+      {{ saving() ? 'Salvataggio...' : 'Salva' }}
+    </button>
+
+    <button
+      [disabled]="saving()"
+      class="route-action"
+      type="button"
+      (click)="cancelForm()"
+    >
+      Annulla
+    </button>
+  </form>
+  }
+
+  @if (successMessage()) {
+  <p class="success-message" role="status">
+    {{ successMessage() }}
+  </p>
+  }
+
+  @if (loading()) {
+  <p role="status">Caricamento delle tratte...</p>
+  } @else if (errorMessage()) {
+  <p role="alert">{{ errorMessage() }}</p>
+
+  <button
+    type="button"
+    (click)="loadRoutes()"
+    [disabled]="saving()"
+  >
+    Riprova
+  </button>
+
+  } @else if (routePage(); as page) {
+  @if (page.content.length === 0) {
+  <p role="status">Nessuna tratta presente.</p>
+  } @else {
+  <p role="status">
+    Tratte visualizzate: {{ page.content.length }}.
+    Totale: {{ page.totalElements }}.
+  </p>
+
+  <div
+    class="table-wrapper"
+    role="region"
+    aria-label="Elenco tratte"
+    tabindex="0"
+  >
+    <table>
+      <caption>Tratte dell’aeroporto</caption>
+
+      <thead>
+      <tr>
+        <th scope="col">Origine</th>
+        <th scope="col">Destinazione</th>
+        <th scope="col">Paese</th>
+        <th scope="col">Tipo</th>
+        <th scope="col">Ritorno</th>
+      </tr>
+      </thead>
+
+      <tbody>
+      @for (route of page.content; track route.id) {
+      <tr>
+        <td>{{ route.originCity }}</td>
+        <td>{{ route.destinationCity }}</td>
+        <td>
+          {{ route.destinationCountryCode === 'IT'
+          ? 'Italia'
+          : 'Regno Unito' }}
+        </td>
+        <td>
+          {{ route.routeType === 'NAZIONALE'
+          ? 'Nazionale'
+          : 'Internazionale' }}
+        </td>
+        <td>{{ route.returnEnabled ? 'Sì' : 'No' }}</td>
+      </tr>
+      }
+      </tbody>
+    </table>
+
+  </div>
+
+  <nav class="pagination" aria-label="Paginazione delle tratte">
+    <button
+      type="button"
+      (click)="changePage(page.page - 1)"
+      [disabled]="loading() || saving() || page.page === 0"
+    >
+      Precedente
+    </button>
+
+    <span role="status">
+    Pagina {{ page.page + 1 }} di {{ page.totalPages }}
+  </span>
+
+    <button
+      type="button"
+      (click)="changePage(page.page + 1)"
+      [disabled]="loading() || saving() || page.page + 1 >= page.totalPages"
+    >
+      Successiva
+    </button>
+
+  </nav>
+
+  }
+  }
+</section>

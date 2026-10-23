@@ -1,0 +1,141 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.routes-page {
+  box-sizing: border-box;
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid #d8eaf5;
+  border-radius: 1rem;
+  background: #ffffff;
+}
+
+.routes-page h1 {
+  margin-top: 0;
+}
+
+.table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-wrapper:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 3px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+caption {
+  padding: 0.75rem 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+th,
+td {
+  padding: 0.85rem;
+  border-bottom: 1px solid #d8eaf5;
+  white-space: nowrap;
+}
+
+th {
+  color: #075985;
+  background: #effaff;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.pagination button {
+  padding: 0.75rem 1rem;
+  border: 1px solid #0369a1;
+  border-radius: 0.65rem;
+  color: #ffffff;
+  background: #0369a1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination button:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 3px;
+}
+
+.route-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #d8eaf5;
+  border-radius: 1rem;
+}
+
+.route-form h2,
+.route-form p {
+  margin: 0;
+}
+
+.route-form input,
+.route-form select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  font: inherit;
+}
+
+.field-error {
+  color: #b91c1c;
+}
+
+.route-action {
+  justify-self: start;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.65rem;
+  color: #ffffff;
+  background: #0369a1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.route-form input:focus-visible,
+.route-form select:focus-visible,
+.route-action:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 3px;
+}
+
+.route-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.success-message {
+  padding: 0.85rem 1rem;
+  border: 1px solid #86efac;
+  border-radius: 0.65rem;
+  color: #166534;
+  background: #f0fdf4;
+}

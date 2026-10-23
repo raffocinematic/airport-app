@@ -1,0 +1,86 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-routes
+      author: raffo
+      changes:
+        - createTable:
+            tableName: routes
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  name: origin_city
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: destination_city
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: normalized_destination_city
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: destination_country_code
+                  type: varchar(2)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: return_enabled
+                  type: boolean
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            tableName: routes
+            columnNames: origin_city, normalized_destination_city, destination_country_code
+            constraintName: uk_routes_origin_destination_country
+
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE routes
+                  ADD CONSTRAINT ck_routes_origin_city
+                      CHECK (origin_city = 'Napoli'),
+              
+                  ADD CONSTRAINT ck_routes_destination_city
+                      CHECK (
+                          destination_city = btrim(destination_city)
+                          AND char_length(destination_city) > 0
+                      ),
+              
+                  ADD CONSTRAINT ck_routes_normalized_destination
+                      CHECK (
+                          normalized_destination_city =
+                          lower(btrim(destination_city))
+                      ),
+              
+                  ADD CONSTRAINT ck_routes_destination_not_napoli
+                      CHECK (normalized_destination_city <> 'napoli'),
+              
+                  ADD CONSTRAINT ck_routes_country
+                      CHECK (destination_country_code IN ('IT', 'GB')),
+              
+                  ADD CONSTRAINT ck_routes_return_enabled
+                      CHECK (
+                          normalized_destination_city NOT IN ('milano', 'roma')
+                          OR return_enabled
+                      );

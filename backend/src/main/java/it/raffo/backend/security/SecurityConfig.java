@@ -96,6 +96,8 @@ public class SecurityConfig {
                         ).authenticated()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/operatori/**").hasRole("OPERATORI")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/routes").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/routes").hasRole("ADMIN")
 
                         .anyRequest().denyAll()
                 )

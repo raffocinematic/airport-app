@@ -1,15 +1,15 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import {Component, DestroyRef, inject, signal} from '@angular/core';
 import {
   NonNullableFormBuilder,
   ReactiveFormsModule,
   Validators
 } from '@angular/forms';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {HttpErrorResponse} from '@angular/common/http';
+import {ActivatedRoute, Router, RouterLink} from '@angular/router';
+import {finalize} from 'rxjs';
 
-import { AuthService } from '../core/auth/auth-service';
+import {AuthService} from '../core/auth/auth-service';
 
 @Component({
   selector: 'app-login',
@@ -84,19 +84,26 @@ export class Login {
     const request = this.form.getRawValue();
 
     this.loading.set(true);
-    this.form.disable({ emitEvent: false });
+    this.form.disable({emitEvent: false});
 
     this.authService.login(request).pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
         this.loading.set(false);
-        this.form.enable({ emitEvent: false });
+        this.form.enable({emitEvent: false});
       })
     ).subscribe({
-      next: () => {
+
+      next: response => {
         this.form.controls.password.reset('');
-        void this.router.navigateByUrl('/home');
+
+        const destination = response.role === 'ADMIN'
+          ? '/admin'
+          : '/home';
+
+        void this.router.navigateByUrl(destination);
       },
+
       error: (error: unknown) => {
         if (error instanceof HttpErrorResponse) {
           if (error.status === 401) {

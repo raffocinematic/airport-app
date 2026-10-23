@@ -473,11 +473,11 @@ Alla richiesta successiva il converter rifiuta i token con versione precedente: 
 
 Dalla home il pulsante Logout chiama `AuthService.logout()`: `POST /api/v1/auth/logout` con body nullo e risposta attesa `204 No Content`. Il token resta disponibile quando parte la richiesta, affinché l’interceptor aggiunga il Bearer. Il servizio applica `timeout(10_000)`.
 
-`Home.loggingOut` impedisce invii ripetuti, disabilita i pulsanti Logout e Riprova e mostra “Uscita…”. Il caricamento del profilo non può essere avviato mentre si sta uscendo. La richiesta di logout, limitata dal timeout, viene lasciata terminare anche se la Home viene chiusa.
+`Home.loggingOut` impedisce invii ripetuti, disabilita i pulsanti Logout e Riprova e mostra “Uscita…”. Il caricamento del profilo non può essere avviato mentre si sta uscendo. La richiesta di logout, limitata dal timeout, viene lasciata terminare anche se la SessionLayout viene chiusa.
 
-Al successo la Home cancella la sessione locale e naviga a `/login` con `replaceUrl: true`. In caso di errore, incluso un `401`, o di timeout, cancella comunque la sessione locale e naviga a `/login?reason=logout-unconfirmed`. La login mostra: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” L’avviso viene rimosso all’inizio di un nuovo tentativo di accesso. L’uscita locale non prova che il server abbia eseguito la revoca.
+Al successo la SessionLayout cancella la sessione locale e naviga a `/login` con `replaceUrl: true`. In caso di errore, incluso un `401`, o di timeout, cancella comunque la sessione locale e naviga a `/login?reason=logout-unconfirmed`. La login mostra: “Sei uscito dall’applicazione. La revoca delle altre sessioni non è stata confermata.” L’avviso viene rimosso all’inizio di un nuovo tentativo di accesso. L’uscita locale non prova che il server abbia eseguito la revoca.
 
-Sul `401` del logout l’interceptor cancella il token corrente ma lascia la navigazione alla Home, evitando il doppio reindirizzamento con motivo `session-expired`. Per le altre API conserva il comportamento precedente. La Home confronta inoltre il token della richiesta con quello corrente: una risposta tardiva non cancella una nuova sessione con token diverso.
+Sul `401` del logout l’interceptor cancella il token corrente ma lascia la navigazione alla SessionLayout, evitando il doppio reindirizzamento con motivo `session-expired`. Per le altre API conserva il comportamento precedente. La SessionLayout confronta inoltre il token della richiesta con quello corrente: una risposta tardiva non cancella una nuova sessione con token diverso.
 
 Il comportamento backend resta quello descritto sopra: un logout riuscito revoca tutti i token precedenti dello stesso utente, anche quelli delle altre sessioni. Le prove manuali confermate e gli scenari residui sono registrati nella sezione Test.
 
@@ -691,7 +691,7 @@ In PowerShell conviene usare apici singoli attorno al JSON:
 - **FATTO** — 20 casi del converter superati con JDK 17; tre test di integrazione PostgreSQL con esito positivo confermato dallo sviluppatore. Esecuzioni e limiti distinti nella sezione Test.
 
 - **FATTO** — Frontend Angular con login, registrazione pubblica OPERATORI, token della login solo in memoria, interceptor Bearer e landing comune `/home` protetta; `/profilo` resta una pagina separata. Flusso principale confermato dallo sviluppatore; dopo la registrazione si torna alla login senza salvare il token ricevuto.
-- **FATTO** — Home con tema azzurro condiviso, benvenuto e ruolo a sinistra, marchio centrato, Logout a destra e illustrazione centrale dell’aereo in costruzione.
+- **FATTO** — SessionLayout con tema azzurro condiviso, benvenuto e ruolo a sinistra, marchio centrato, Logout a destra e illustrazione centrale dell’aereo in costruzione.
 - **FATTO** — Logout frontend con richiesta autenticata, uscita locale anche in caso di errore, messaggio di revoca non confermata e timeout configurato a 10 secondi. Prove con backend attivo e spento confermate dallo sviluppatore; prova dedicata del timeout ancora da verificare.
 - **FATTO** — Restyling azzurro di login e registrazione, icona SVG dell’aereo e stili SCSS condivisi. Build senza avvisi e verifiche grafiche desktop/mobile svolti dall’assistente nella precedente attività; i 9 test frontend restano un’esecuzione storica distinta.
 
@@ -738,7 +738,7 @@ Queste differenze riguardano i requisiti dell’analisi funzionale e tecnica, ol
 - **FATTO** — Scheda centrale “Lavori in corso” con illustrazione locale in `frontend/public/illustration/airport-work-in-progress.svg`: aereo in costruzione, gru e barriere da cantiere. Il template usa `/illustration/airport-work-in-progress.svg`, con testo alternativo e dimensioni adattabili. Il mixin `canvas` di `frontend/src/app/shared/app-theme.scss` condivide sfondo, colore del testo e caratteri tra home, login e registrazione.
 - **FATTO** — Pagina separata `/profilo` con dati reali di nome, email e ruolo ottenuti da `/me`, caricamento, messaggi di errore e pulsante per aggiornare il profilo.
 - **FATTO** — Guard delle route `/home` e `/profilo`: accesso consentito in presenza di token, altrimenti reindirizzamento al login. La presenza del token non ne dimostra la validità: la verifica effettiva resta al backend.
-- **FATTO** — Un `401` su una richiesta autenticata cancella la sessione corrente; per le API diverse dal logout l’interceptor rimanda alla login con motivo `session-expired`, mentre per il logout la navigazione è gestita dalla Home. Un `403` conserva la sessione. Il `401` tardivo di una richiesta con token precedente non cancella una nuova sessione con token diverso; l’errore viene comunque propagato al chiamante.
+- **FATTO** — Un `401` su una richiesta autenticata cancella la sessione corrente; per le API diverse dal logout l’interceptor rimanda alla login con motivo `session-expired`, mentre per il logout la navigazione è gestita dalla SessionLayout. Un `403` conserva la sessione. Il `401` tardivo di una richiesta con token precedente non cancella una nuova sessione con token diverso; l’errore viene comunque propagato al chiamante.
 - **FATTO** — Pulsante Logout, stato “Uscita…”, uscita locale e ritorno alla login con sostituzione della voce corrente nella cronologia. Se la revoca non è confermata compare l’avviso ambrato nella login; dettagli nella sezione Logout frontend.
 - **PARZIALE** — Gestione della scadenza: rilevata alla successiva risposta `401` del backend. Non è implementata una verifica preventiva o un timer che interrompa la sessione mentre l’utente non effettua richieste.
 - **PARZIALE** — Ruolo letto e mostrato nella home comune e nella pagina profilo; navigazione distinta a `/admin` o `/operatori` ancora **NON IMPLEMENTATA**.
@@ -960,7 +960,7 @@ La conferma del flusso principale non attesta una nuova prova dettagliata di ogn
 - Richiesta di registrazione manipolata per tentare di scegliere `ADMIN`: impossibilità di ottenere il ruolo amministrativo. La protezione è presente nel codice, ma non è stata registrata una prova dedicata dopo la modifica.
 
 - Logout con richiesta lasciata in attesa fino al timeout di 10 secondi: uscita locale con avviso di revoca non confermata.
-- Logout che riceve `401` e risposta tardiva del logout dopo una nuova sessione: coordinamento fra interceptor e Home e protezione del nuovo token, presenti nel codice ma senza una prova manuale dedicata registrata.
+- Logout che riceve `401` e risposta tardiva del logout dopo una nuova sessione: coordinamento fra interceptor e SessionLayout e protezione del nuovo token, presenti nel codice ma senza una prova manuale dedicata registrata.
 - Verifica dedicata della home a 320 px e con nomi molto lunghi; le precedenti verifiche grafiche dell’assistente riguardavano login e registrazione.
 - Animazione login/registrazione: prove dedicate con movimento ridotto e browser privi delle API o dei selettori richiesti; i percorsi di fallback sono presenti nel codice. Il ritorno dopo una registrazione riuscita con `registered=true` è previsto dalla selezione delle rotte, ma non è stato confermato separatamente per la nuova animazione.
 

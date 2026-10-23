@@ -1,3 +1,6 @@
 databaseChangeLog:
   - include:
       file: db/changelog/001-create-app-users.yaml
+
+  - include:
+      file: db/changelog/002-create-routes.yaml
