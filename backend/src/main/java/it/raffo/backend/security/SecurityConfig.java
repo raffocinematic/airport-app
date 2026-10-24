@@ -96,8 +96,27 @@ public class SecurityConfig {
                         ).authenticated()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/operatori/**").hasRole("OPERATORI")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/routes").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/routes").hasRole("ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/routes"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/routes"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/v1/routes/*"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/v1/routes/*/status"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/v1/routes/*"
+                        ).hasRole("ADMIN")
 
                         .anyRequest().denyAll()
                 )
@@ -146,9 +165,15 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(properties.allowedOrigins());
 
         configuration.setAllowedMethods(
-                List.of("GET", "POST", "OPTIONS")
+                List.of(
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE",
+                        "OPTIONS"
+                )
         );
-
         configuration.setAllowedHeaders(
                 List.of("Authorization", "Content-Type", "Accept")
         );

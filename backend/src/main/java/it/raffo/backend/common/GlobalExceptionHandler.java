@@ -6,12 +6,18 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
-@RestControllerAdvice // intercetta eccezioni dei controller REST
+/**
+ * Intercetta eccezioni dei controller REST
+ */
+@RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateResourceException.class) // dice come trasformare una specifica eccezione in risposta HTTP
@@ -24,6 +30,22 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, exception.getMessage(), Map.of());
     }
 
+    /**
+     * Se il service cerca una tratta che non esiste, si lancia ResourceNotFoundException,
+     * GlobalExceptionHandler intercetta l'eccezione e restituisce HTTP 404 con ApiErrorResponse
+     *
+     * @param exception
+     * @return
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleResourceNotFound(ResourceNotFoundException exception) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                exception.getMessage(),
+                Map.of()
+        );
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class) // lanciata quando fallisce @Valid
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         Map<String, String> fieldErrors = new HashMap<>();
@@ -33,6 +55,33 @@ public class GlobalExceptionHandler {
         }
 
         return buildResponse(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception
+    ) {
+        String fieldMessage =
+                exception.getRequiredType() == UUID.class
+                        ? "Must be a valid UUID"
+                        : "Invalid parameter value";
+
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request parameter",
+                Map.of(exception.getName(), fieldMessage)
+        );
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "Request body is missing or invalid",
+                Map.of()
+        );
     }
 
     @ExceptionHandler(InvalidPasswordException.class)

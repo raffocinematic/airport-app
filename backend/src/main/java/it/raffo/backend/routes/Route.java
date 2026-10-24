@@ -37,6 +37,9 @@ public class Route {
     @Column(name = "return_enabled", nullable = false)
     private boolean returnEnabled;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -63,6 +66,26 @@ public class Route {
         this.createdAt = createdAt;
     }
 
+    /**
+     * Metodo che aggiorna insieme i quattro attributi relativi ai dati modificabili
+     *
+     * @param destinationCity
+     * @param normalizedDestinationCity
+     * @param destinationCountryCode
+     * @param returnEnabled
+     */
+    public void updateDetails(
+            String destinationCity,
+            String normalizedDestinationCity,
+            RouteCountry destinationCountryCode,
+            boolean returnEnabled
+    ) {
+        this.destinationCity = destinationCity;
+        this.normalizedDestinationCity = normalizedDestinationCity;
+        this.destinationCountryCode = destinationCountryCode;
+        this.returnEnabled = returnEnabled;
+    }
+
     // Getter, per permettere al service di leggere gli attributi e costruire i DTO di risposta.
     public UUID getId() {
         return id;
@@ -86,6 +109,21 @@ public class Route {
 
     public boolean isReturnEnabled() {
         return returnEnabled;
+    }
+
+    /**
+     * Metodo che permetterà al service di leggere lo stato
+     */
+    public boolean isActive() {
+        return active;
+    }
+
+    /**
+     * Metodo che useremo successivamente nel service per disattivare o riattivare una tratta.
+     * Metodo che da solo NON esegue una richiesta HTTP o apre una transazine
+     */
+    public void changeStatus(boolean active) {
+        this.active = active;
     }
 
     public Instant getCreatedAt() {

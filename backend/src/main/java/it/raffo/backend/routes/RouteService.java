@@ -6,6 +6,7 @@ import it.raffo.backend.common.DuplicateResourceException;
 import org.springframework.transaction.annotation.Transactional;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import it.raffo.backend.common.ResourceNotFoundException;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -104,6 +105,117 @@ public class RouteService {
 
     /**
      *
+     * Metodo per aggiornare una rotta
+     *
+     * @param id
+     * @param request
+     * @return
+     */
+    @Transactional
+    public RouteResponse update(UUID id, UpdateRouteRequest request) {
+
+        // carichiamo la tratta e gestiamo l'assenza
+        Route route = routeRepository.findByIdForUpdate(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Route not found")
+                );
+
+        String destinationCity = request.destinationCity();
+
+        String normalizedDestinationCity =
+                destinationCity.toLowerCase(Locale.ROOT);
+
+        RouteCountry destinationCountryCode =
+                RouteCountry.valueOf(request.destinationCountryCode());
+
+        boolean returnEnabled = request.returnEnabled();
+
+        // Qui validiamo i nuovi valori
+        validateBusinessRules(
+                normalizedDestinationCity,
+                returnEnabled
+        );
+
+        boolean alreadyExists =
+                routeRepository.existsByOriginCityAndNormalizedDestinationCityAndDestinationCountryCodeAndIdNot(
+                        route.getOriginCity(),
+                        normalizedDestinationCity,
+                        destinationCountryCode,
+                        route.getId()
+                );
+
+        if (alreadyExists) {
+            throw new DuplicateResourceException("Route already exists");
+        }
+
+        route.updateDetails(
+                destinationCity,
+                normalizedDestinationCity,
+                destinationCountryCode,
+                returnEnabled
+        );
+
+        try {
+            routeRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            if (isUniqueConstraintViolation(
+                    exception,
+                    ROUTE_UNIQUE_CONSTRAINT
+            )) {
+                throw new DuplicateResourceException(
+                        "Route already exists",
+                        exception
+                );
+            }
+
+            throw exception;
+        }
+
+        return toResponse(route);
+    }
+
+    /**
+     * Metodo per cambiare lo stato di una rotta
+     *
+     * @param id
+     * @param request
+     * @return
+     */
+    @Transactional
+    public RouteResponse changeStatus(UUID id, UpdateRouteStatusRequest request) {
+
+        Route route = routeRepository.findByIdForUpdate(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Route not found")
+                );
+
+        route.changeStatus(request.active());
+
+        routeRepository.flush();
+
+        return toResponse(route);
+    }
+
+    /**
+     * Metodo per cancellare una rotta
+     *
+     * @param id
+     */
+    @Transactional
+    public void delete(UUID id) {
+
+        Route route = routeRepository.findByIdForUpdate(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Route not found")
+                );
+        routeRepository.delete(route);
+        routeRepository.flush();
+    }
+
+
+
+    /**
+     *
      * @param page
      * @param size
      * @return
@@ -183,6 +295,7 @@ public class RouteService {
                 route.getDestinationCountryCode(),
                 route.getRouteType(),
                 route.isReturnEnabled(),
+                route.isActive(),
                 route.getCreatedAt()
         );
     }

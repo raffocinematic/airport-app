@@ -120,6 +120,23 @@ th {
   cursor: pointer;
 }
 
+.route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 26rem;
+  white-space: normal;
+}
+
+.route-action--danger {
+  background: #b91c1c;
+}
+
+.route-action--danger:hover:not(:disabled) {
+  background: #991b1b;
+}
+
 .route-form input:focus-visible,
 .route-form select:focus-visible,
 .route-action:focus-visible {

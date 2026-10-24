@@ -1,7 +1,8 @@
 <section class="routes-page" aria-labelledby="admin-routes-title">
   <h1 id="admin-routes-title">Tratte</h1>
 
-  <p>Consulta e aggiungi le tratte dell’aeroporto.</p>
+  <p>Gestisci le tratte dell’aeroporto.</p>
+
 
   @if (!formVisible()) {
   <button
@@ -19,10 +20,12 @@
     class="route-form"
     [formGroup]="form"
     (ngSubmit)="submit()"
-    aria-labelledby="create-route-title"
+    aria-labelledby="route-form-title"
     novalidate
   >
-    <h2 id="create-route-title">Aggiungi tratta</h2>
+    <h2 id="route-form-title">
+      {{ editingRouteId() === null ? 'Aggiungi tratta' : 'Modifica tratta' }}
+    </h2>
 
     <p>I campi contrassegnati con * sono obbligatori.</p>
 
@@ -138,18 +141,26 @@
       type="submit"
       [disabled]="saving() || loading()"
     >
-      {{ saving() ? 'Salvataggio...' : 'Salva' }}
+      {{ saving()
+      ? 'Salvataggio...'
+      : (editingRouteId() === null ? 'Crea tratta' : 'Salva modifiche') }}
     </button>
 
     <button
-      [disabled]="saving()"
       class="route-action"
       type="button"
       (click)="cancelForm()"
+      [disabled]="saving()"
     >
       Annulla
     </button>
   </form>
+  }
+
+  @if (actionErrorMessage()) {
+  <p class="field-error" role="alert">
+    {{ actionErrorMessage() }}
+  </p>
   }
 
   @if (successMessage()) {
@@ -170,7 +181,6 @@
   >
     Riprova
   </button>
-
   } @else if (routePage(); as page) {
   @if (page.content.length === 0) {
   <p role="status">Nessuna tratta presente.</p>
@@ -196,6 +206,8 @@
         <th scope="col">Paese</th>
         <th scope="col">Tipo</th>
         <th scope="col">Ritorno</th>
+        <th scope="col">Stato</th>
+        <th scope="col">Azioni</th>
       </tr>
       </thead>
 
@@ -215,11 +227,48 @@
           : 'Internazionale' }}
         </td>
         <td>{{ route.returnEnabled ? 'Sì' : 'No' }}</td>
+        <td>{{ route.active ? 'Attiva' : 'Disattivata' }}</td>
+        <td>
+          <div class="route-actions">
+            <button
+              class="route-action"
+              type="button"
+              (click)="openEditForm(route)"
+              [disabled]="saving() || loading() || formVisible()"
+              [attr.aria-label]="'Modifica tratta per '
+                + route.destinationCity
+                + ' (' + route.destinationCountryCode + ')'"
+            >
+              Modifica
+            </button>
+            <button
+              class="route-action"
+              type="button"
+              (click)="changeRouteStatus(route)"
+              [disabled]="saving() || loading() || formVisible()"
+              [attr.aria-label]="(route.active ? 'Disattiva' : 'Attiva')
+                + ' tratta per ' + route.destinationCity
+                + ' (' + route.destinationCountryCode + ')'"
+            >
+              {{ route.active ? 'Disattiva' : 'Attiva' }}
+            </button>
+            <button
+              class="route-action route-action--danger"
+              type="button"
+              (click)="deleteRoute(route)"
+              [disabled]="saving() || loading() || formVisible()"
+              [attr.aria-label]="'Elimina tratta per '
+                + route.destinationCity
+                + ' (' + route.destinationCountryCode + ')'"
+            >
+              Elimina
+            </button>
+          </div>
+        </td>
       </tr>
       }
       </tbody>
     </table>
-
   </div>
 
   <nav class="pagination" aria-label="Paginazione delle tratte">
@@ -232,8 +281,8 @@
     </button>
 
     <span role="status">
-    Pagina {{ page.page + 1 }} di {{ page.totalPages }}
-  </span>
+          Pagina {{ page.page + 1 }} di {{ page.totalPages }}
+        </span>
 
     <button
       type="button"
@@ -242,9 +291,7 @@
     >
       Successiva
     </button>
-
   </nav>
-
   }
   }
 </section>

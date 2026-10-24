@@ -1,39 +1,37 @@
 # Airport App — Modelli di aereo e tratte
 
-**Aggiornamento:** 23 ottobre 2026.
+**Aggiornamento:** 24 ottobre 2026.
 
 **Fonte:** [Airport_App_Analisi_Funzionale_Tecnica.md](FROM_CUSTOMER_Airport_App_Analisi_Funzionale_Tecnica.md), versione 0.4 del 18 ottobre 2026. Riferimenti principali: sezioni 1–6, 7, 9–12 e 14.
 
-Questo documento raccoglie il lavoro relativo a modelli di aereo, tratte e relative schermate amministrative. Distingue le richieste del cliente dalle proposte tecniche dell’analisi e dalle decisioni ancora aperte. Non introduce funzionalità ulteriori.
+Questo documento raccoglie il lavoro relativo a modelli di aereo, tratte e relative schermate amministrative. Distingue le richieste del cliente dalle proposte tecniche e dalle decisioni ancora aperte. Registra inoltre l’estensione richiesta dall’utente durante lo sviluppo: modifica, attivazione/disattivazione e cancellazione definitiva delle tratte.
 
 ## 1. Stato attuale e legenda
 
-Lo stato seguente deriva dai sorgenti presenti e dalle verifiche registrate nella sessione di sviluppo. La presenza di codice o di una migrazione non dimostra che il comportamento sia stato provato su un backend e un database reali.
+Lo stato deriva dai sorgenti e dalle prove registrate nella sessione. Implementazione, compilazione, verifica frontend con API simulate e prova reale sono evidenze distinte.
 
-- **IMPLEMENTATO (FATTO nel codice)** — Funzionalità presente nei sorgenti; non equivale a una verifica completa.
-- **VERIFICATO** — Prova eseguita con esito registrato e perimetro esplicito.
-- **DA VERIFICARE / DA ESEGUIRE** — Prova ancora da completare o priva di un esito documentato.
-- **NON IMPLEMENTATO** — Funzionalità assente dai sorgenti.
-- **PARZIALE** — Solo parte del requisito o delle relative verifiche è completata.
-- **DA CONFERMARE** — Proposta ancora aperta con il cliente.
+- **IMPLEMENTATO** — Funzionalità presente nei sorgenti.
+- **VERIFICATO DIRETTAMENTE** — Prova eseguita dall’assistente, con perimetro esplicito.
+- **VERIFICATO DALL’UTENTE** — Esito positivo riferito dall’utente; comando o risposta non necessariamente acquisiti dall’assistente.
+- **DA VERIFICARE / DA ESEGUIRE** — Scenario non eseguito o privo di evidenza sufficiente.
+- **NON IMPLEMENTATO / PARZIALE / DA CONFERMARE** — Funzionalità assente, incompleta o decisione aperta.
 
 | Area | Implementazione | Verifica |
 | --- | --- | --- |
-| Auth, profilo e logout | Presenti; riferimenti in [LoginRegisterAuth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md) | Restano validi soltanto gli scenari registrati nel documento auth |
-| Landing e navigazione | ADMIN su `/admin`, OPERATORI su `/home`; menu ADMIN e guard presenti | Riscontro visivo della pagina Tratte e del menu nello screenshot della sessione; flussi completi per ruolo da verificare |
-| Tratte backend | Modulo `routes`, DTO, service, repository, GET/POST e regole ADMIN presenti | Integrazione reale, permessi API e concorrenza da verificare |
-| Schema tratte | Migrazione `002-create-routes.yaml` inclusa nel changelog master | Applicazione e vincoli su PostgreSQL da verificare |
-| Tratte frontend | Lista, paginazione, inserimento, annullamento ed errori presenti | Build e 10 test Angular con HTTP simulato superati; dettagli nella sezione 7 |
+| Auth, profilo e logout | Presenti; riferimento in [LoginRegisterAuth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md) | Non estendere gli esiti auth a scenari non provati |
+| Landing e navigazione | ADMIN su `/admin`, OPERATORI su `/home`, menu destro e guard | Riscontri visivi; navigazione ADMIN verificata in Chromium con auth simulata |
+| Tratte backend | GET, POST, PUT, PATCH stato e DELETE; regole ADMIN, validazioni e transazioni | Prove Postman/SQL e primo test di integrazione confermati dall’utente; concorrenza da verificare |
+| Schema tratte | Migrazioni `002-create-routes.yaml` e `003-add-route-active.yaml` nel master | Colonna `active` visibile nello screenshot pgAdmin; verifica dei cambiamenti riferita dall’utente |
+| Tratte frontend | Lista, creazione, modifica, stato, cancellazione con conferma, paginazione ed errori | Build e 10 controlli Chromium con API simulate superati il 24 ottobre; test Angular del 23 ottobre conservati come evidenza storica |
 | Modelli di aereo | NON IMPLEMENTATO: modulo, migrazione, API e pagina assenti | DA ESEGUIRE dopo lo sviluppo |
-| Modifica e cancellazione tratte | Rinviate, fuori dal perimetro concordato di lista e inserimento | DA ESEGUIRE nella relativa fase futura |
 
-L'aggiornamento documentale registra il codice e le prove già esistenti; non applica migrazioni né certifica prove manuali non riportate.
+Le prove odierne nel browser non hanno chiamato il backend reale né modificato PostgreSQL. Le conferme dell’utente sono riportate separatamente nella sezione 7.
 
 ## 2. Richiesta del cliente e perimetro
 
 Il gestionale riguarda un piccolo aeroporto privato a Napoli. La richiesta originale prevede che gli ADMIN possano aggiungere e consultare modelli di aereo e tratte attraverso un menu a sinistra. Gli OPERATORI non possono usare queste funzioni. Durante lo sviluppo l'utente ha scelto il menu a destra e il riuso dell'aereo esistente: queste decisioni sono registrate nella sezione 3, senza modificare il documento cliente.
 
-Il documento descrive due anagrafiche indipendenti, ciascuna con inserimento e lista minima di consultazione. Il percorso di sviluppo corrente riguarda lista e inserimento delle tratte; i modelli di aereo restano da implementare. Le liste permettono di consultare i dati salvati.
+L’analisi originale descrive due anagrafiche indipendenti con inserimento e lista. Il perimetro tratte è stato esteso su richiesta esplicita dell’utente a modifica, attivazione/disattivazione e cancellazione definitiva, ora implementate. I modelli di aereo restano da sviluppare.
 
 | Termine | Significato nel progetto | Esempio |
 | --- | --- | --- |
@@ -53,7 +51,7 @@ Le tre rotte iniziali sono Napoli–Milano, Napoli–Roma e Napoli–Londra. I c
 | --- | --- | --- |
 | Landing e menu amministrativi | Sì | No |
 | Inserimento e consultazione dei modelli | Sì | No |
-| Inserimento e consultazione delle tratte | Sì | No |
+| Consultazione, creazione, modifica, cambio stato ed eliminazione delle tratte | Sì | No |
 | Pagina di benvenuto OPERATORI | Non necessaria | Sì |
 
 I permessi devono essere applicati dal backend, anche quando l’utente chiama direttamente le API. Guard Angular e visibilità del menu rendono coerente l’interfaccia, ma non sostituiscono l’autorizzazione sul server. Anche l’ADMIN deve rispettare tutte le validazioni.
@@ -76,14 +74,14 @@ I permessi devono essere applicati dal backend, anche quando l’utente chiama d
 - Su scelta esplicita dell'utente, il menu è **a destra**, con `SessionLayout` e `Tratte`; la voce attiva è evidenziata. Sotto 800 px il menu passa sopra il contenuto; sotto 640 px l'intestazione usa due righe.
 - Su scelta esplicita dell'utente, `AdminHome` riutilizza `/illustration/airport-work-in-progress.svg`, con testo alternativo e dimensioni responsive, al posto del precedente segnaposto. L'immagine dell'aeroporto fornita dal cliente resta futura; non è stato generato un nuovo asset.
 - La pagina Tratte viene visualizzata nell'area contenuti mantenendo il menu. La voce Modelli di aereo è assente.
-- `authGuard` protegge la sessione; `adminGuard` è applicato tramite `canActivateChild` ai figli di `/admin`. Il backend dichiara separatamente l'accesso ADMIN alle API tratte. Le prove complete di autorizzazione restano da eseguire.
+- `authGuard` protegge la sessione; `adminGuard` è applicato tramite `canActivateChild` ai figli di `/admin`. Il backend dichiara separatamente l'accesso ADMIN alle API tratte. Le risposte `401` senza token e `403` con ruolo OPERATORI per PUT/PATCH/DELETE sono state confermate dall’utente; token scaduti/revocati e navigazione reale per ruolo restano da verificare.
 
 ### Schermate: stato attuale
 
 | Percorso Angular | Contenuto | Stato |
 | --- | --- | --- |
 | `/admin` | Landing ADMIN con aereo esistente e menu | IMPLEMENTATO |
-| `/admin/routes` | Lista paginata e form Aggiungi tratta | IMPLEMENTATO |
+| `/admin/routes` | Lista paginata, form creazione/modifica, stato e cancellazione con conferma | IMPLEMENTATO |
 | `/home` | Pagina con aereo in costruzione e avviso di lavori; destinazione dopo login OPERATORI | IMPLEMENTATO; richiede autenticazione, non è una pagina esclusiva OPERATORI |
 | `/admin/aircraft-models` | Lista e form Aggiungi modello | NON IMPLEMENTATO |
 | `/operatori` | Percorso dedicato previsto dall'analisi | NON IMPLEMENTATO |
@@ -170,18 +168,26 @@ Le tratte iniziali vanno inserite dal gestionale, non costituiscono un limite ma
 
 Le destinazioni europee comprendono il Regno Unito: non confondere il perimetro geografico europeo con l’appartenenza all’Unione europea. Gli aeroporti specifici nelle città non sono ancora stati scelti.
 
-### Inserimento e lista
+### Inserimento, modifica, stato ed eliminazione
 
-- `Salva` registra la tratta e aggiorna la lista con conferma; `Annulla` non salva.
-- In caso di errore conservare i valori e mostrare il problema; disabilitare `Salva` durante la richiesta e indicare i campi obbligatori.
-- La lista mostra origine, destinazione, paese, tipo derivato e disponibilità del ritorno.
-- Consentire in seguito altri inserimenti oltre alle tre tratte iniziali, rispettando il perimetro geografico.
+- La lista mostra origine, destinazione, paese, tipo derivato, ritorno, stato e azioni. Include sia tratte attive sia disattivate, senza filtri in questa versione.
+- `Aggiungi tratta` apre il form vuoto; `Modifica` lo compila usando i dati della riga. L’ID selezionato distingue POST e PUT.
+- La modifica riguarda destinazione, paese e ritorno. Conserva ID, origine, data di creazione e stato; è consentita anche su tratte disattivate.
+- `Annulla` chiude il form e azzera la selezione senza inviare una scrittura. Gli errori di salvataggio conservano i valori.
+- Le nuove tratte sono attive. `Disattiva` invia `{ "active": false }`; `Attiva` invia `{ "active": true }`. Ripetere lo stesso stato è ammesso dal backend.
+- L’unicità comprende anche le tratte disattivate: per riutilizzarle occorre riattivarle, non creare duplicati.
+- `Elimina` mostra una conferma del browser con origine, destinazione e paese. Annullare non invia DELETE; confermare elimina fisicamente il record, attivo o disattivato.
+- I tre comandi sono raggruppati con spaziatura e disposizione flessibile; Elimina è rosso e mantiene focus visibile e comportamento da tastiera.
 
-**Comportamento implementato:** lista a 10 elementi per pagina, stati di caricamento/vuoto/errore e comando Riprova; pulsanti Precedente/Successiva con controllo dei limiti. Durante il POST i campi, Salva, Annulla e la paginazione sono bloccati; il metodo di invio impedisce richieste ripetute. Al successo il form viene resettato e chiuso, compare la conferma e viene richiesta la prima pagina. Un errore della GET successiva rimane distinto dalla conferma del POST. Gli errori mantengono i dati; i dettagli `fieldErrors` sono mostrati accanto ai tre campi e ripuliti quando i valori cambiano, al reset e al nuovo invio. Le prove con HTTP simulato non dimostrano la persistenza reale.
+**Richieste e messaggi:** durante una scrittura vengono bloccate altre azioni e la paginazione; durante un form aperto sono bloccate le azioni sulle righe. Il form viene disabilitato durante POST/PUT. Al successo si chiude e si azzera; dopo la creazione si carica la prima pagina, dopo modifica/stato/eliminazione si ricarica quella corrente. Gli errori delle azioni sono visibili anche fuori dal form. I dettagli `fieldErrors` sono mostrati sui tre campi noti e ripuliti alla modifica dei valori, apertura/reset e nuovo invio.
+
+**Paginazione:** il frontend richiede 10 elementi. Se la pagina non esiste più dopo una cancellazione, `loadValidRoutePage()` calcola `max(0, totalPages - 1)` e carica l’ultima disponibile, ripetendo il controllo se necessario. Il caricamento rimane attivo fino alla risposta finale. Se non rimangono tratte, carica la pagina 0 vuota, mostra il messaggio dedicato e nasconde la paginazione.
+
+Un errore della GET successiva non cancella la conferma della scrittura riuscita. `Riprova` ripete soltanto il caricamento della lista. Le scritture non vengono ritentate automaticamente in caso di esito incerto.
 
 ### Modello dati implementato
 
-Modulo backend `routes`, entità `Route`, tabella `routes`. La creazione dello schema è definita in [002-create-routes.yaml](backend/src/main/resources/db/changelog/002-create-routes.yaml), inclusa nel changelog master; la sua applicazione al database non è stata verificata in questa sessione.
+Modulo backend `routes`, entità `Route`, tabella `routes`. [002-create-routes.yaml](backend/src/main/resources/db/changelog/002-create-routes.yaml) crea la tabella; [003-add-route-active.yaml](backend/src/main/resources/db/changelog/003-add-route-active.yaml) aggiunge `active` booleano NOT NULL con default `true`, anche per le righe esistenti. Entrambe sono incluse nel master. Lo screenshot pgAdmin del 24 ottobre mostra la colonna e i dati; l’assistente non ha rieseguito migrazioni sul database dell’utente.
 
 | Campo dell’entità | Significato e vincolo |
 | --- | --- |
@@ -191,6 +197,7 @@ Modulo backend `routes`, entità `Route`, tabella `routes`. La creazione dello s
 | `normalizedDestinationCity` | Destinazione normalizzata calcolata dal backend |
 | `destinationCountryCode` | Codice del paese ammesso |
 | `returnEnabled` | Scelta esplicita del ritorno; vincoli nazionali descritti sopra |
+| `active` | Stato booleano obbligatorio; default `true` |
 | `createdAt` | Istante di creazione UTC |
 
 Vincolo univoco composto: origine + destinazione normalizzata + paese. Il tipo nazionale/internazionale si calcola dal paese senza introdurre un campo modificabile ridondante.
@@ -203,7 +210,7 @@ I punti seguenti sono requisiti comuni: implementati per le tratte, ancora da sv
 
 - Mantenere Java/Spring Boot, Spring Data JPA/Hibernate, PostgreSQL e Angular/TypeScript già adottati.
 - Organizzare ciascuna funzionalità con controller, service, repository e DTO dedicati; non esporre direttamente le entità JPA.
-- Usare transazioni per gli inserimenti e migrazioni versionate per lo schema.
+- Usare transazioni per le scritture e migrazioni versionate per lo schema. Modifica, cambio stato e cancellazione acquisiscono la riga con lock pessimista tramite `findByIdForUpdate`; l’unicità rimane garantita anche dal database. Il controllo dei duplicati in modifica esclude l’ID corrente.
 - **Allineamento al progetto attuale:** usare Liquibase, già configurato. Flyway compare nella proposta tecnica iniziale, ma non è lo strumento effettivamente adottato.
 - Negli ambienti persistenti Hibernate valida lo schema senza modificarlo automaticamente.
 - Applicare limiti testuali, valori ammessi, obbligatorietà e vincoli numerici nelle API e nello schema PostgreSQL, oltre all’unicità.
@@ -211,24 +218,29 @@ I punti seguenti sono requisiti comuni: implementati per le tratte, ancora da sv
 
 ### API e stato
 
-| Metodo | Percorso | Accesso previsto | Risultato atteso | Implementazione |
+| Metodo | Percorso | Accesso | Risultato positivo | Implementazione |
 | --- | --- | --- | --- | --- |
-| GET | `/api/v1/aircraft-models` | ADMIN | Lista modelli, `200` | NON IMPLEMENTATO |
-| POST | `/api/v1/aircraft-models` | ADMIN | Inserimento modello valido, `201` | NON IMPLEMENTATO |
-| GET | `/api/v1/routes` | ADMIN | Lista tratte, `200` | IMPLEMENTATO; integrazione reale DA VERIFICARE |
-| POST | `/api/v1/routes` | ADMIN | Inserimento tratta valida, `201` | IMPLEMENTATO; integrazione reale DA VERIFICARE |
+| GET | `/api/v1/aircraft-models` | ADMIN | Lista, `200` | NON IMPLEMENTATO |
+| POST | `/api/v1/aircraft-models` | ADMIN | Creazione, `201` | NON IMPLEMENTATO |
+| GET | `/api/v1/routes` | ADMIN | Lista paginata, `200` | IMPLEMENTATO |
+| POST | `/api/v1/routes` | ADMIN | Creazione, `201` e `RouteResponse` | IMPLEMENTATO |
+| PUT | `/api/v1/routes/{id}` | ADMIN | Modifica, `200` e `RouteResponse` | IMPLEMENTATO |
+| PATCH | `/api/v1/routes/{id}/status` | ADMIN | Cambio stato, `200` e `RouteResponse` | IMPLEMENTATO |
+| DELETE | `/api/v1/routes/{id}` | ADMIN | Eliminazione, `204` senza body | IMPLEMENTATO |
 
-**Paginazione tratte implementata:** `page` parte da `0` e ha valore predefinito `0`; `size` ha valore predefinito `10` ed è ammesso da `1` a `50`. Parametri fuori limite producono `400` con dettagli sui campi. L'ordinamento è `createdAt DESC, id DESC`. `RoutePageResponse` contiene `content`, `page`, `size`, `totalElements`, `totalPages`. Il frontend richiede 10 elementi e visualizza il numero pagina partendo da 1. La paginazione dei modelli resta da sviluppare.
+POST e PUT ricevono `destinationCity`, `destinationCountryCode` e `returnEnabled`. PATCH riceve soltanto `active`, obbligatorio (`false` è valido). `RouteResponse` contiene `id`, `originCity`, `destinationCity`, `destinationCountryCode`, `routeType`, `returnEnabled`, `active`, `createdAt`. Non serve un GET dedicato per ID per compilare il form: i dati sono già nella lista.
 
-Le API tratte restano a `/api/v1/routes`: `SecurityConfig` contiene già le regole esplicite ADMIN per GET e POST prima di `.anyRequest().denyAll()`. I figli di `/admin` sono protetti dal guard frontend. Per le API dei modelli, ancora assenti, le regole specifiche restano da introdurre con il relativo modulo. Configurazione presente non significa autorizzazioni già provate sulle nuove API.
+**Paginazione:** `page` parte da 0 e ha default 0; `size` ha default 10 e ammette valori da 1 a 50. Parametri fuori limite producono `400`. Ordinamento `createdAt DESC, id DESC`. `RoutePageResponse` contiene `content`, `page`, `size`, `totalElements`, `totalPages`. Il frontend visualizza il numero pagina partendo da 1.
 
-Convenzioni per le nuove API: `400` per input non valido, `401` per autenticazione assente o token non valido, `403` per ruolo insufficiente, `409` per duplicati. Gestire i conflitti di unicità anche quando emergono al momento del salvataggio concorrente.
+**Sicurezza:** `SecurityConfig` autorizza esplicitamente ADMIN per tutti e cinque i metodi prima di `.anyRequest().denyAll()`. La configurazione CORS include PUT/PATCH/DELETE. I figli di `/admin` restano protetti dal guard frontend. I modelli di aereo richiederanno regole proprie quando saranno implementati.
 
-**Errori implementati:** `ApiErrorResponse` espone `timestamp`, `status`, `error`, `message`, `fieldErrors`. Le validazioni del DTO e `InvalidRouteException` producono `400`; i duplicati producono `409`. Il service esegue il controllo preliminare e traduce anche la violazione del vincolo univoco nominato durante `saveAndFlush`; la concorrenza resta DA VERIFICARE. Il frontend distingue `400`, `401`, `403`, `409` ed errori di rete/server; per `400` accetta soltanto messaggi testuali dei tre campi noti, usando interpolazione testuale e fallback generale per corpi inattesi. Non esiste un campo aggiuntivo di codice applicativo. Il `429` resta relativo al login.
+**Errori:** `ApiErrorResponse` espone `timestamp`, `status`, `error`, `message`, `fieldErrors`. DTO e regole business producono `400`; UUID non convertibile e body assente/non leggibile sono gestiti esplicitamente. ID valido ma inesistente produce `404`, anche ripetendo DELETE. Autenticazione assente/non valida produce `401`; ruolo insufficiente `403`; duplicati `409`. Un corpo `{}` sulla PATCH è JSON leggibile ma fallisce `@NotNull` prima della ricerca della tratta.
+
+Il servizio controlla l’unicità prima della scrittura e traduce la violazione del vincolo nominato durante `saveAndFlush`/`flush`. Le collisioni concorrenti e l’effettiva serializzazione dei lock rimangono da verificare. Il frontend distingue gli errori applicabili a ogni operazione e non ripete automaticamente le scritture. Il `429` resta relativo al login.
 
 ### Sessione e dipendenze auth
 
-**IMPLEMENTATO:** `RouteService` usa HTTP sullo stesso origin, l'interceptor esistente aggiunge il Bearer in memoria e gestisce i `401` della sessione corrente con ritorno alla login e messaggio di sessione scaduta. Non è previsto un nuovo invio automatico del POST dopo la login. **DA VERIFICARE:** comportamento effettivo sulle nuove API con token assente, non valido, scaduto o revocato.
+**IMPLEMENTATO:** `RouteService` usa HTTP sullo stesso origin; l’interceptor aggiunge il Bearer in memoria e gestisce i `401` della sessione corrente con ritorno alla login. Non viene ripetuta automaticamente alcuna scrittura dopo la login. **VERIFICATO DALL’UTENTE:** `401` senza token per PUT/PATCH/DELETE. **DA VERIFICARE:** token non valido, scaduto o revocato sui flussi reali delle nuove API.
 
 L’analisi prevede che un account con cambio password obbligatorio non possa usare le API business, anche se ADMIN, e completi il cambio prima della landing. **Dipendenza auth non ancora implementata:** password temporanee, scadenza e flag di cambio obbligatorio sono descritti come lavoro futuro in [LoginRegisterAuth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md). Non considerarli già disponibili né implementarli implicitamente con queste anagrafiche. Anche i controlli espliciti issuer/audience restano un’attività auth separata.
 
@@ -255,7 +267,7 @@ Gli ID AC e i risultati attesi mantengono il riferimento all'analisi originale. 
 | Integrazione tratte | Ritorno non indicato o disabilitato per Milano/Roma; creazioni concorrenti della stessa tratta | Rifiuto dei dati non validi; duplicato `409` e una sola rotta persistita | IMPLEMENTATO per le tratte | DA VERIFICARE: vincoli e concorrenza su PostgreSQL |
 | Integrazione liste | Consultazione dopo salvataggio e richieste di paginazione | Record visibile e dimensione massima rispettata dal server | IMPLEMENTATO per le tratte | DA VERIFICARE: salvataggio riuscito, pagine multiple e limite server |
 | Integrazione frontend | Errore durante il salvataggio o richiesta in corso | Dati conservati, errore mostrato e invii ripetuti impediti | IMPLEMENTATO per le tratte | PARZIALE: 10 test Angular superati; doppio clic e flusso di successo da verificare |
-| Integrazione sessione | Token assente, non valido o revocato sulle nuove API | `401`; nessuna creazione automatica ritentata dopo una nuova login | IMPLEMENTATO tramite gestione auth esistente | DA VERIFICARE sulle nuove API |
+| Integrazione sessione | Token assente, non valido o revocato sulle nuove API | `401`; nessuna scrittura ritentata automaticamente dopo login | IMPLEMENTATO tramite gestione auth esistente | PARZIALE: assenza token su PUT/PATCH/DELETE confermata dall’utente; altri casi da verificare |
 
 ### Verifiche eseguite il 23 ottobre 2026
 
@@ -274,13 +286,46 @@ I test di [admin-routes.spec.ts](frontend/src/app/admin/routes/admin-routes.spec
 
 Le prove sono state eseguite durante lo sviluppo precedente a questo aggiornamento documentale. Non sono prove del vincolo univoco reale, delle regole business del backend o del salvataggio riuscito.
 
-### Verifiche residue
+### Verifiche del 24 ottobre 2026 eseguite direttamente
 
-Restano DA VERIFICARE: applicazione della migrazione su PostgreSQL; inserimento e lettura reali, con riscontro SQL; duplicati e vincoli, anche concorrenti; paginazione con più di 10 record e limiti API; annullamento e doppio clic nel browser; POST riuscito seguito da GET fallita; permessi ADMIN/OPERATORI e sessione sulle nuove API; layout e uso da tastiera su schermi piccoli.
+- `npm.cmd run build` nella cartella `frontend`: **SUPERATO**, dopo il completamento dell’interfaccia. Compila TypeScript, template e stili; non prova la persistenza.
+- Verifica ad hoc con Playwright/Chromium e tutte le API intercettate: **10 controlli SUPERATI**, senza aggiungere una suite permanente. Credenziali e token utilizzati sono dati fittizi della simulazione; nessuna richiesta al backend reale.
 
-Non risultano test dedicati alle tratte in `backend/src/test` né scenari Playwright dedicati in `test-automation/tests`. La dimostrazione completa richiesta dall'analisi comprende anche i modelli di aereo, ancora assenti; per il perimetro corrente occorre dimostrare ADMIN che inserisce una tratta e OPERATORI bloccato anche chiamando direttamente le API.
+| Controllo Chromium | Esito osservato con API simulate |
+| --- | --- |
+| Modifica | Form precompilato, altre azioni bloccate, PUT con ID e body corretti, messaggio e lista aggiornata |
+| Disattivazione e riattivazione | PATCH con `false`/`true`, messaggi e pulsanti coerenti |
+| Annullamento eliminazione | Conferma rifiutata, nessuna DELETE inviata |
+| Conferma eliminazione | Una DELETE, messaggio positivo e riga rimossa |
+| Tastiera e stile | Ordine Modifica/Stato/Elimina, focus visibile, conferma aperta con Invio; pulsante Elimina rosso |
+| Richiesta in corso | Altre azioni disabilitate e poi riabilitate |
+| Ultima pagina rimossa | Con 11 record, eliminazione dell’unico record della pagina 1 e caricamento automatico della pagina 0 |
+| Ultima tratta eliminata | Messaggio elenco vuoto, conferma conservata, paginazione nascosta |
+| GET fallita dopo DELETE riuscita | Conferma della cancellazione conservata; Riprova esegue soltanto GET |
+| Schermo piccolo | A 390 px pagina senza overflow orizzontale, tabella scorrevole, pulsanti raggiungibili |
 
-Gli AC-14 e AC-15 dell'analisi riguardano inoltre token e revoca. Le verifiche auth già registrate restano distinte nel documento JWT e non certificano automaticamente le API tratte. Questo aggiornamento modifica soltanto la documentazione: registra build e test Angular precedenti, senza aggiungere o eseguire nuove prove Java, Angular, Playwright o database.
+Acquisiti e controllati screenshot desktop (1440 px) e mobile (390 px). Artefatti locali temporanei: `%TEMP%/airport-routes-review-20261024` (`desktop.png`, `mobile.png`, `results.json`). Questi controlli non certificano autenticazione reale, vincoli PostgreSQL o integrazione completa Angular → backend → database.
+
+### Verifiche del 24 ottobre confermate dall’utente
+
+| Prova reale o comando | Esito riferito / evidenza disponibile |
+| --- | --- |
+| Postman e pgAdmin: creazione e modifica, ripetizione della PUT | Funzionanti secondo conferma dell’utente; screenshot SQL con Bologna, normalizzazione `bologna`, paese IT e stato attivo |
+| PATCH di disattivazione, ripetizione e riattivazione | Funzionanti, con controllo dello stato nel database riferito dall’utente |
+| DELETE, query SQL e seconda DELETE | Prima risposta `204`, riga assente e seconda risposta `404`, confermati dall’utente |
+| Input non valido | `400` per UUID non valido, PATCH `{}` e JSON malformato, confermati dall’utente |
+| Sicurezza delle scritture | PUT/PATCH/DELETE senza token: `401`; con token OPERATORI: `403`, confermati dall’utente |
+| Primo test di integrazione tratte | Esecuzione positiva riferita dall’utente; sorgente [RoueServiceIntegrationTest.java](backend/src/test/java/it/raffo/backend/routes/RoueServiceIntegrationTest.java), classe `RouteServiceIntegrationTest` |
+
+Il test Java crea Torino, modifica in Londra e verifica normalizzazione, paese, ritorno, stato, ID e data invariati, rileggendo PostgreSQL dopo `EntityManager.clear()`. Usa Testcontainers e Liquibase; l’assistente ha letto il sorgente ma non ha rieseguito il comando né acquisito il report Maven.
+
+### Verifiche residue e limiti
+
+- Flusso completo del frontend con backend e PostgreSQL reali: non eseguito direttamente dall’assistente.
+- Duplicati reali in modifica, riuso delle tratte disattivate, casi business non provati e concorrenza: restano da verificare.
+- Lock concorrenti, tutti i limiti di paginazione API, token scaduti/revocati e comportamenti in caso di modifiche simultanee: restano da verificare.
+- Gli altri test automatici backend/frontend delle nuove operazioni sono stati rinviati su richiesta dell’utente. I 10 test Angular del 23 ottobre sono evidenza storica e non sono stati rieseguiti in questo completamento.
+- La verifica dei modelli di aereo dipende dal loro sviluppo. Gli scenari auth AC-14/AC-15 restano distinti nel documento JWT.
 
 ## 8. Decisioni concordate e questioni aperte
 
@@ -300,7 +345,7 @@ Le regole tecniche dettagliate dei campi provengono da RF-05/RF-06 e dal modello
 
 ## 9. Funzionalità rinviate e fuori perimetro
 
-- Modifica, eliminazione e disattivazione di modelli e tratte; filtri avanzati delle anagrafiche.
+- Anagrafica modelli di aereo, incluse eventuali successive modifica, eliminazione e disattivazione; filtri avanzati delle anagrafiche. La gestione completa delle tratte descritta sopra rientra invece nel perimetro implementato.
 - Flotta fisica, matricole e relativa entità `Aircraft`; assegnazione dei mezzi ai voli.
 - Associazioni fra modelli e tratte.
 - Programmazione e gestione dei voli, relativa entità `Flight`, date, orari, frequenze e capacità dei singoli voli.
@@ -314,12 +359,13 @@ L’eventuale vendita futura è ipotizzata allo sportello tramite personale, sen
 
 ## 10. Stato di avanzamento e ordine di ripresa
 
-1. **IMPLEMENTATO, PARZIALE rispetto all'analisi** — Landing ADMIN, menu destro, immagine esistente, redirect per ruolo e guard. Restano asset cliente, pagina `/operatori` dedicata e voce Modelli.
-2. **IMPLEMENTATO** — Tratte: migrazione, modello dati, repository, service, DTO, API ADMIN, lista paginata e form. Non richiede l'implementazione di modifica o cancellazione per chiudere il perimetro corrente.
-3. **VERIFICATO con limiti espliciti** — Build frontend e 10 test Angular sugli errori del form, come registrato nella sezione 7.
-4. **DA VERIFICARE — prossimo passo** — Flusso reale form → API → PostgreSQL → lista, dati iniziali, query SQL, duplicati e paginazione.
-5. **DA VERIFICARE** — Permessi API e navigazione per ruolo, sessione scaduta/revocata e casi residui della sezione 7; documentare gli esiti.
-6. **NON IMPLEMENTATO, fase successiva** — Anagrafica modelli di aereo completa.
-7. **DA PREPARARE per la consegna** — Istruzioni di avvio locale senza segreti, migrazioni e risultati delle prove essenziali.
+1. **IMPLEMENTATO** — Gestione tratte completa nel perimetro concordato: lista, creazione, modifica, disattivazione/riattivazione, cancellazione con conferma e recupero della pagina valida.
+2. **VERIFICATO DIRETTAMENTE** — Build frontend e 10 controlli Chromium con API simulate del 24 ottobre, oltre alle evidenze storiche del 23 ottobre.
+3. **VERIFICATO DALL’UTENTE** — Prove Postman/SQL, autorizzazioni PUT/PATCH/DELETE e primo test di integrazione Java, con i limiti indicati nella sezione 7.
+4. **DA VERIFICARE** — Integrazione completa del browser con backend/database reali e scenari residui; non confonderli con la compilazione o la simulazione HTTP.
+5. **PARZIALE rispetto all’analisi originale** — Landing ADMIN e navigazione presenti; restano asset cliente, percorso `/operatori` dedicato e anagrafica modelli di aereo.
+6. **NON IMPLEMENTATO, fase futura** — Modelli di aereo e gli altri sviluppi elencati nella sezione 9.
+7. **DA PREPARARE per la consegna** — Istruzioni di avvio senza segreti e risultati delle verifiche necessarie alla consegna.
 
-Il percorso resta didattico: il codice viene scritto dallo sviluppatore con guida passo per passo, salvo eccezioni esplicitamente autorizzate. Questo intervento aggiorna soltanto `Aircraft_Routes.md`; conserva i requisiti originali distinguendoli dalle scelte concordate e dalle evidenze di verifica.
+Il percorso resta didattico: il codice viene scritto dallo sviluppatore con guida passo per passo, salvo eccezioni esplicitamente autorizzate. Il completamento di HTML/SCSS, gli interventi sul componente e l’aggiornamento documentale sono stati autorizzati espressamente dall’utente.
+

@@ -10,6 +10,7 @@ public record RouteResponse(
         RouteCountry destinationCountryCode,
         RouteType routeType,
         boolean returnEnabled,
+        boolean active,
         Instant createdAt
 ) {
 }

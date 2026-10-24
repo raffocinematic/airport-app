@@ -8,6 +8,18 @@ export interface CreateRouteRequest {
   returnEnabled: boolean;
 }
 
+// Dati modificabili di una tratta esistente.
+export interface UpdateRouteRequest {
+  destinationCity: string;
+  destinationCountryCode: RouteCountry;
+  returnEnabled: boolean;
+}
+
+// Stato da assegnare alla tratta.
+export interface UpdateRouteStatusRequest {
+  active: boolean;
+}
+
 export interface AirportRoute {
   id: string;
   originCity: string;
@@ -15,6 +27,7 @@ export interface AirportRoute {
   destinationCountryCode: RouteCountry;
   routeType: RouteType;
   returnEnabled: boolean;
+  active: boolean;
   createdAt: string;
 }
 

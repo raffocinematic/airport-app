@@ -4,3 +4,6 @@ databaseChangeLog:
 
   - include:
       file: db/changelog/002-create-routes.yaml
+
+  - include:
+      file: db/changelog/003-add-route-active.yaml

@@ -2,11 +2,13 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import type { OnInit } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { finalize } from 'rxjs';
+import { finalize, of, switchMap } from 'rxjs';
+import type { Observable } from 'rxjs';
 
 import { RouteService } from '../../core/routes/route-service';
 
 import type {
+  AirportRoute,
   CreateRouteRequest,
   RouteCountry,
   RoutePageResponse
@@ -88,10 +90,14 @@ export class AdminRoutes implements OnInit {
 
   readonly formVisible = signal(false);
 
+  // null indica la creazione; un ID indica la modifica.
+  readonly editingRouteId = signal<string | null>(null);
+
   readonly saving = signal(false);
   readonly saveErrorMessage = signal('');
   readonly serverFieldErrors = signal<RouteFieldErrors>({});
   readonly successMessage = signal('');
+  readonly actionErrorMessage = signal('');
 
 
   // L'avvio del caricamento
@@ -107,19 +113,41 @@ export class AdminRoutes implements OnInit {
   }
 
 
-
   normalizeDestination(): void {
     const control = this.form.controls.destinationCity;
     control.setValue(control.value.trim());
   }
 
   openForm(): void {
-    if (this.saving()) {
+    if (this.saving() || this.loading()) {
       return;
     }
 
+    this.editingRouteId.set(null);
     this.form.reset();
+    this.serverFieldErrors.set({});
     this.saveErrorMessage.set('');
+    this.actionErrorMessage.set('');
+    this.successMessage.set('');
+    this.formVisible.set(true);
+  }
+
+  openEditForm(route: AirportRoute): void {
+    if (this.saving() || this.loading()) {
+      return;
+    }
+
+    this.editingRouteId.set(route.id);
+
+    this.form.reset({
+      destinationCity: route.destinationCity,
+      destinationCountryCode: route.destinationCountryCode,
+      returnEnabled: route.returnEnabled
+    });
+
+    this.serverFieldErrors.set({});
+    this.saveErrorMessage.set('');
+    this.actionErrorMessage.set('');
     this.successMessage.set('');
     this.formVisible.set(true);
   }
@@ -129,9 +157,127 @@ export class AdminRoutes implements OnInit {
       return;
     }
 
+    this.editingRouteId.set(null);
     this.form.reset();
+    this.serverFieldErrors.set({});
     this.saveErrorMessage.set('');
     this.formVisible.set(false);
+  }
+
+  // Imposta lo stato opposto e ricarica la pagina corrente dopo la conferma.
+  changeRouteStatus(route: AirportRoute): void {
+    if (this.saving() || this.loading() || this.formVisible()) {
+      return;
+    }
+
+    const nextActive = !route.active;
+    const pageToReload = this.requestedPage;
+
+    this.actionErrorMessage.set('');
+    this.successMessage.set('');
+    this.saving.set(true);
+
+    this.routeService.changeStatus(
+      route.id,
+      { active: nextActive }
+    ).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.saving.set(false))
+    ).subscribe({
+      next: updatedRoute => {
+        this.successMessage.set(
+          updatedRoute.active
+            ? 'Tratta attivata correttamente.'
+            : 'Tratta disattivata correttamente.'
+        );
+
+        this.loadRoutes(pageToReload);
+      },
+      error: (error: unknown) => {
+        if (error instanceof HttpErrorResponse) {
+          switch (error.status) {
+            case 401:
+              return;
+
+            case 403:
+              this.actionErrorMessage.set(
+                'Non hai i permessi per cambiare lo stato delle tratte.'
+              );
+              return;
+
+            case 404:
+              this.actionErrorMessage.set(
+                'La tratta non esiste più. L’elenco verrà aggiornato.'
+              );
+              this.loadRoutes(pageToReload);
+              return;
+          }
+        }
+
+        this.actionErrorMessage.set(
+          'Impossibile confermare il cambio di stato. '
+          + 'Ricarica la pagina prima di riprovare.'
+        );
+      }
+    });
+  }
+
+  deleteRoute(route: AirportRoute): void {
+    if (this.saving() || this.loading() || this.formVisible()) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Vuoi eliminare definitivamente la tratta '
+      + route.originCity + ' → ' + route.destinationCity
+      + ' (' + route.destinationCountryCode + ')?'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const pageToReload = this.requestedPage;
+
+    this.actionErrorMessage.set('');
+    this.successMessage.set('');
+    this.saving.set(true);
+
+    this.routeService.delete(route.id).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.saving.set(false))
+    ).subscribe({
+      next: () => {
+        this.successMessage.set('Tratta eliminata correttamente.');
+        this.loadRoutes(pageToReload);
+      },
+      error: (error: unknown) => {
+        if (error instanceof HttpErrorResponse) {
+          switch (error.status) {
+            case 401:
+              return;
+
+            case 403:
+              this.actionErrorMessage.set(
+                'Non hai i permessi per eliminare le tratte.'
+              );
+              return;
+
+            case 404:
+              this.actionErrorMessage.set(
+                'La tratta non esiste più. L’elenco verrà aggiornato.'
+              );
+              this.loadRoutes(pageToReload);
+              return;
+          }
+        }
+
+        this.actionErrorMessage.set(
+          'Impossibile confermare la cancellazione. '
+          + 'Ricarica la pagina prima di riprovare.'
+        );
+      }
+    });
   }
 
   submit(): void {
@@ -162,23 +308,40 @@ export class AdminRoutes implements OnInit {
       returnEnabled: values.returnEnabled
     };
 
+    // Memorizziamo la modalità e la pagina per questa operazione.
+    const editingId = this.editingRouteId();
+    const pageToReload = editingId === null
+      ? 0
+      : this.requestedPage;
+
+    const request$ = editingId === null
+      ? this.routeService.create(request)
+      : this.routeService.update(editingId, request);
+
     this.saving.set(true);
     this.form.disable({ emitEvent: false });
 
-    this.routeService.create(request).pipe(
+      request$.pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
         this.saving.set(false);
         this.form.enable({ emitEvent: false });
       })
     ).subscribe({
-      next: () => {
-        this.form.reset();
-        this.formVisible.set(false);
-        this.successMessage.set('Tratta salvata correttamente.');
+        next: () => {
+          this.editingRouteId.set(null);
+          this.form.reset();
+          this.serverFieldErrors.set({});
+          this.formVisible.set(false);
 
-        this.loadRoutes(0);
-      },
+          this.successMessage.set(
+            editingId === null
+              ? 'Tratta creata correttamente.'
+              : 'Tratta modificata correttamente.'
+          );
+
+          this.loadRoutes(pageToReload);
+        },
       error: (error: unknown) => {
         if (error instanceof HttpErrorResponse) {
           switch (error.status) {
@@ -196,7 +359,14 @@ export class AdminRoutes implements OnInit {
 
             case 403:
               this.saveErrorMessage.set(
-                'Non hai i permessi per aggiungere tratte.'
+                'Non hai i permessi per salvare le tratte.'
+              );
+              return;
+
+            case 404:
+              this.saveErrorMessage.set(
+                'La tratta non esiste più. '
+                + 'Annulla la modifica e ricarica la pagina.'
               );
               return;
 
@@ -261,6 +431,25 @@ export class AdminRoutes implements OnInit {
     return result;
   }
 
+  // Se una cancellazione ha rimosso la pagina richiesta, carica l'ultima valida.
+  private loadValidRoutePage(
+    page: number
+  ): Observable<RoutePageResponse> {
+    return this.routeService.list(page, 10).pipe(
+      switchMap(response => {
+        const lastPage = Math.max(0, response.totalPages - 1);
+
+        if (page > lastPage) {
+          this.requestedPage = lastPage;
+
+          return this.loadValidRoutePage(lastPage);
+        }
+
+        return of(response);
+      })
+    );
+  }
+
   loadRoutes(page = this.requestedPage): void {
     if (this.loading()) {
       return;
@@ -271,11 +460,12 @@ export class AdminRoutes implements OnInit {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    this.routeService.list(page, 10).pipe(
+    this.loadValidRoutePage(page).pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => this.loading.set(false))
     ).subscribe({
       next: response => {
+        this.requestedPage = response.page;
         this.routePage.set(response);
       },
       error: (error: unknown) => {
