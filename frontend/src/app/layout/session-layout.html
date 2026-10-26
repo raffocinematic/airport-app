@@ -1,17 +1,36 @@
 <div class="home-page">
 
   <header class="home-header">
-    <div class="user-welcome">
-      @if (profile(); as user) {
-      <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
-
-      <span class="user-role">
-        {{ user.role === 'ADMIN' ? 'Admin' : 'Operatore' }}
-      </span>
+    <div class="header-start">
+      @if (profile()?.role === 'ADMIN') {
+      <button
+        type="button"
+        aria-label="Apri il menu amministrazione"
+        aria-haspopup="dialog"
+        aria-controls="admin-menu-dialog"
+        [attr.aria-expanded]="menuOpen()"
+        [disabled]="loggingOut()"
+        (click)="openMenu()"
+      >
+        <span aria-hidden="true">☰</span>
+        Menù
+      </button>
       }
+
     </div>
 
-    <span class="home-brand">Airport App</span>
+    <div class="header-center">
+      <span class="home-brand">Airport App</span>
+
+      @if (profile(); as user) {
+      <div class="user-welcome">
+        <p>Benvenuto, <strong>{{ user.firstName }}</strong></p>
+        <span class="user-role">
+          {{ user.role === 'ADMIN' ? 'Admin' : 'Operatore' }}
+        </span>
+      </div>
+      }
+    </div>
 
     <button
       class="logout-button"
@@ -43,38 +62,60 @@
     </button>
     }
 
-    @if (profile(); as user) {
-    <div
-      class="session-content"
-      [class.session-content--admin]="user.role === 'ADMIN'"
-    >
-      @if (user.role === 'ADMIN') {
+    @if (profile()) {
+    <div class="session-content">
+      <div class="session-view">
+        <router-outlet />
+      </div>
+    </div>
+    }
+  </main>
+
+  @if (profile()?.role === 'ADMIN') {
+  <dialog
+    #adminMenu
+    id="admin-menu-dialog"
+    class="menu-dialog"
+    aria-labelledby="admin-menu-title"
+    (click)="onMenuBackdropClick($event)"
+    (close)="onMenuClosed()"
+  >
+    <div class="menu-panel">
+      <div class="menu-panel__header">
+        <h2 id="admin-menu-title">Menu amministrazione</h2>
+
+        <button
+          class="menu-close-button"
+          type="button"
+          autofocus
+          (click)="closeMenu()"
+        >
+          Chiudi
+        </button>
+      </div>
+
       <nav class="admin-menu" aria-label="Menu amministrazione">
         <a
           routerLink="/admin"
           routerLinkActive="admin-menu__link--active"
           [routerLinkActiveOptions]="{ exact: true }"
           ariaCurrentWhenActive="page"
+          (click)="closeMenu()"
         >
-          SessionLayout
+          Home
         </a>
 
         <a
           routerLink="/admin/routes"
           routerLinkActive="admin-menu__link--active"
           ariaCurrentWhenActive="page"
+          (click)="closeMenu()"
         >
           Tratte
         </a>
       </nav>
-      }
-
-      <div class="session-view">
-        <router-outlet />
-      </div>
     </div>
-    }
-
-  </main>
+  </dialog>
+  }
 
 </div>

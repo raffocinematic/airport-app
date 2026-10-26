@@ -9,7 +9,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import it.raffo.backend.common.ResourceNotFoundException;
 
 import java.time.Instant;
-import java.util.Locale;
 import java.util.UUID;
 
 import java.time.Clock;
@@ -20,6 +19,8 @@ import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import it.raffo.backend.destinations.DestinationCity;
+import it.raffo.backend.destinations.DestinationCityRepository;
 
 @Service
 public class RouteService {
@@ -28,45 +29,46 @@ public class RouteService {
     private static final String ORIGIN_CITY = "Napoli";
 
     private static final String ROUTE_UNIQUE_CONSTRAINT =
-            "uk_routes_origin_destination_country";
+            "uk_routes_origin_destination_city";
 
-    private static final Set<String> RETURN_REQUIRED_DESTINATIONS =
-            Set.of("milano", "roma");
+    private static final Long NAPOLI_CITY_ID = 3172394L;
+
+    private static final Set<Long> RETURN_REQUIRED_DESTINATIONS =
+            Set.of(3173435L, 3169070L);
 
     private static final int MAX_PAGE_SIZE = 50;
 
     // serve a cercare duplicati, salvare e leggere tratte
     private final RouteRepository routeRepository;
+
+    private final DestinationCityRepository destinationCityRepository;
+
     // serve per assegnare l'istante della creazione
     private final Clock clock;
 
-    public RouteService(RouteRepository routeRepository, Clock clock) {
+    public RouteService(
+            RouteRepository routeRepository,
+            DestinationCityRepository destinationCityRepository,
+            Clock clock
+    ) {
         this.routeRepository = routeRepository;
+        this.destinationCityRepository = destinationCityRepository;
         this.clock = clock;
     }
 
     @Transactional
     public RouteResponse create(CreateRouteRequest request) {
-        String destinationCity = request.destinationCity();
-
-        String normalizedDestinationCity =
-                destinationCity.toLowerCase(Locale.ROOT);
-
-        RouteCountry destinationCountryCode =
-                RouteCountry.valueOf(request.destinationCountryCode());
+        DestinationCity destination =
+                resolveDestination(request.destinationCityId());
 
         boolean returnEnabled = request.returnEnabled();
 
-        validateBusinessRules(
-                normalizedDestinationCity,
-                returnEnabled
-        );
+        validateBusinessRules(destination, returnEnabled);
 
         boolean alreadyExists =
-                routeRepository.existsByOriginCityAndNormalizedDestinationCityAndDestinationCountryCode(
+                routeRepository.existsByOriginCityAndDestination_Id(
                         ORIGIN_CITY,
-                        normalizedDestinationCity,
-                        destinationCountryCode
+                        destination.getId()
                 );
 
         if (alreadyExists) {
@@ -76,14 +78,13 @@ public class RouteService {
         Route route = new Route(
                 UUID.randomUUID(),
                 ORIGIN_CITY,
-                destinationCity,
-                normalizedDestinationCity,
-                destinationCountryCode,
+                destination,
                 returnEnabled,
                 Instant.now(clock)
         );
 
         Route savedRoute;
+
         try {
             savedRoute = routeRepository.saveAndFlush(route);
         } catch (DataIntegrityViolationException exception) {
@@ -113,34 +114,22 @@ public class RouteService {
      */
     @Transactional
     public RouteResponse update(UUID id, UpdateRouteRequest request) {
-
-        // carichiamo la tratta e gestiamo l'assenza
         Route route = routeRepository.findByIdForUpdate(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Route not found")
                 );
 
-        String destinationCity = request.destinationCity();
-
-        String normalizedDestinationCity =
-                destinationCity.toLowerCase(Locale.ROOT);
-
-        RouteCountry destinationCountryCode =
-                RouteCountry.valueOf(request.destinationCountryCode());
+        DestinationCity destination =
+                resolveDestination(request.destinationCityId());
 
         boolean returnEnabled = request.returnEnabled();
 
-        // Qui validiamo i nuovi valori
-        validateBusinessRules(
-                normalizedDestinationCity,
-                returnEnabled
-        );
+        validateBusinessRules(destination, returnEnabled);
 
         boolean alreadyExists =
-                routeRepository.existsByOriginCityAndNormalizedDestinationCityAndDestinationCountryCodeAndIdNot(
+                routeRepository.existsByOriginCityAndDestination_IdAndIdNot(
                         route.getOriginCity(),
-                        normalizedDestinationCity,
-                        destinationCountryCode,
+                        destination.getId(),
                         route.getId()
                 );
 
@@ -148,12 +137,7 @@ public class RouteService {
             throw new DuplicateResourceException("Route already exists");
         }
 
-        route.updateDetails(
-                destinationCity,
-                normalizedDestinationCity,
-                destinationCountryCode,
-                returnEnabled
-        );
+        route.updateDetails(destination, returnEnabled);
 
         try {
             routeRepository.flush();
@@ -261,39 +245,66 @@ public class RouteService {
 
     // ------------------------------------------------------------------------------------------------------------
 
+    private DestinationCity resolveDestination(Long destinationCityId) {
+        if (destinationCityId == null || destinationCityId <= 0) {
+            throw new InvalidRouteException(Map.of(
+                    "destinationCityId",
+                    "Select a valid destination city"
+            ));
+        }
+
+        return destinationCityRepository.findById(destinationCityId)
+                .orElseThrow(() -> new InvalidRouteException(Map.of(
+                        "destinationCityId",
+                        "Destination city does not exist"
+                )));
+    }
+
     private void validateBusinessRules(
-            String normalizedDestinationCity,
+            DestinationCity destination,
             boolean returnEnabled
     ) {
         Map<String, String> errors = new HashMap<>();
 
-        if(ORIGIN_CITY.equalsIgnoreCase(normalizedDestinationCity)) {
+        if (NAPOLI_CITY_ID.equals(destination.getId())) {
             errors.put(
-                    "destinationCity",
+                    "destinationCityId",
                     "Destination must be different from Napoli"
             );
         }
 
-        if(RETURN_REQUIRED_DESTINATIONS.contains(normalizedDestinationCity)
-        && !returnEnabled) {
+        if (RETURN_REQUIRED_DESTINATIONS.contains(destination.getId())
+                && !returnEnabled) {
             errors.put(
                     "returnEnabled",
                     "Return connection is required for Milano and Roma"
             );
         }
 
-        if(!errors.isEmpty()) {
+        if (!errors.isEmpty()) {
             throw new InvalidRouteException(errors);
         }
     }
 
     private RouteResponse toResponse(Route route) {
+        DestinationCity destination = route.getDestination();
+
+        RouteCountry countryCode = destination.getCountryCode();
+
+        RouteType routeType = countryCode == RouteCountry.IT
+                ? RouteType.NAZIONALE
+                : RouteType.INTERNAZIONALE;
+
+        // I dati geografici provengono dalla città collegata nel catalogo.
         return new RouteResponse(
                 route.getId(),
                 route.getOriginCity(),
-                route.getDestinationCity(),
-                route.getDestinationCountryCode(),
-                route.getRouteType(),
+                destination.getId(),
+                destination.getName(),
+                countryCode,
+                destination.getAdmin1Name(),
+                destination.getAdmin2Name(),
+                routeType,
                 route.isReturnEnabled(),
                 route.isActive(),
                 route.getCreatedAt()

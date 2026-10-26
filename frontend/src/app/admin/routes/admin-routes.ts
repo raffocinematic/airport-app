@@ -2,17 +2,32 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import type { OnInit } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { finalize, of, switchMap } from 'rxjs';
+import {
+  catchError,
+  finalize,
+  of,
+  Subject,
+  switchMap,
+  timer
+} from 'rxjs';
 import type { Observable } from 'rxjs';
 
 import { RouteService } from '../../core/routes/route-service';
 
+import {
+  DestinationCityService
+} from '../../core/destinations/destination-city-service';
+
 import type {
   AirportRoute,
   CreateRouteRequest,
-  RouteCountry,
   RoutePageResponse
 } from '../../core/routes/route.model';
+
+import type {
+  DestinationCity,
+  DestinationCityPageResponse
+} from '../../core/destinations/destination-city.model';
 
 import {
   FormBuilder,
@@ -23,29 +38,35 @@ import type { ValidatorFn } from '@angular/forms';
 
 type RouteFieldErrors = Partial<Record<keyof CreateRouteRequest, string>>;
 
-/**
- * Validator che riprende le regole già applicate dal BE
- * @param form
- */
+const ORIGIN_CITY_ID = 3172394;
+
+const RETURN_REQUIRED_CITY_IDS = new Set([
+  3173435, // Milano
+  3169070  // Roma
+]);
+
+// Anticipa nel modulo le regole applicate dal backend.
 const routeBusinessValidator: ValidatorFn = form => {
-  const destinationCity = form.get('destinationCity')?.value ?? '';
+  const destinationCityId = form.get('destinationCityId')?.value;
   const returnEnabled = form.get('returnEnabled')?.value;
 
-  const normalizedDestination = destinationCity.trim().toLowerCase();
-
-  if (normalizedDestination === 'napoli') {
+  if (destinationCityId === ORIGIN_CITY_ID) {
     return { destinationIsOrigin: true };
   }
 
-  const returnRequired =
-    normalizedDestination === 'milano'
-    || normalizedDestination === 'roma';
-
-  if (returnRequired && returnEnabled === false) {
+  if (
+    RETURN_REQUIRED_CITY_IDS.has(destinationCityId)
+    && returnEnabled === false
+  ) {
     return { returnRequired: true };
   }
 
   return null;
+};
+
+type DestinationSearchRequest = {
+  query: string;
+  page: number;
 };
 
 @Component({
@@ -59,26 +80,36 @@ export class AdminRoutes implements OnInit {
   // dipendenza che ottiene il servizio tramite dependency injection di Angular, concetto simile a Spring
   private readonly routeService = inject(RouteService);
 
+  private readonly destinationCityService = inject(DestinationCityService);
+
   // ci permette di legare la sottoscrizione alla durata del componente, quando abbandoni la pagina la richiesta
   // ancora in corsi viene annullata
   private readonly destroyRef = inject(DestroyRef);
 
   private requestedPage = 0;
+
+  // Una richiesta avvia la ricerca; null annulla quella precedente.
+  private readonly destinationSearchRequests =
+    new Subject<DestinationSearchRequest | null>();
+
   private readonly formBuilder = inject(FormBuilder);
 
   readonly routePage = signal<RoutePageResponse | null>(null);
   readonly loading = signal(false);
   readonly errorMessage = signal('');
 
+  // Testo digitato per cercare: non viene inviato al backend.
+  readonly destinationSearch =
+    this.formBuilder.nonNullable.control('');
+
+// Dati effettivamente necessari per creare o modificare la tratta.
   readonly form = this.formBuilder.group({
-    destinationCity: this.formBuilder.nonNullable.control('', [
-      Validators.required,
-      Validators.pattern(/\S/),
-      Validators.maxLength(100)
-    ]),
-    destinationCountryCode: this.formBuilder.control<RouteCountry | null>(
+    destinationCityId: this.formBuilder.control<number | null>(
       null,
-      Validators.required
+      [
+        Validators.required,
+        Validators.min(1)
+      ]
     ),
     returnEnabled: this.formBuilder.control<boolean | null>(
       null,
@@ -87,6 +118,16 @@ export class AdminRoutes implements OnInit {
   }, {
     validators: routeBusinessValidator
   });
+
+  // Città scelta dall'utente, con i dati necessari alla visualizzazione.
+  readonly selectedDestination = signal<DestinationCity | null>(null);
+
+// Pagina restituita dall'ultima ricerca.
+  readonly destinationPage =
+    signal<DestinationCityPageResponse | null>(null);
+
+  readonly searchingDestinations = signal(false);
+  readonly destinationSearchErrorMessage = signal('');
 
   readonly formVisible = signal(false);
 
@@ -109,13 +150,160 @@ export class AdminRoutes implements OnInit {
       this.saveErrorMessage.set('');
     });
 
+    this.initializeDestinationSearch();
     this.loadRoutes();
   }
 
 
   normalizeDestination(): void {
-    const control = this.form.controls.destinationCity;
-    control.setValue(control.value.trim());
+    const control = this.destinationSearch;
+
+    control.setValue(
+      control.value.trim(),
+      { emitEvent: false }
+    );
+  }
+
+  private initializeDestinationSearch(): void {
+    this.destinationSearchRequests.pipe(
+      switchMap(
+        (request): Observable<DestinationCityPageResponse | null> => {
+          this.destinationPage.set(null);
+          this.destinationSearchErrorMessage.set('');
+          this.searchingDestinations.set(false);
+
+          if (request === null) {
+            return of(null);
+          }
+
+          if (request.query.length < 2) {
+            return of(null);
+          }
+
+          if (request.query.length > 100) {
+            this.destinationSearchErrorMessage.set(
+              'Inserisci al massimo 100 caratteri per la ricerca.'
+            );
+            return of(null);
+          }
+
+          this.searchingDestinations.set(true);
+
+          // Ogni nuova richiesta annulla anche l'eventuale attesa precedente.
+          return timer(300).pipe(
+            switchMap(() =>
+              this.destinationCityService.search(
+                request.query,
+                request.page,
+                20
+              )
+            ),
+            catchError((error: unknown) => {
+              if (
+                error instanceof HttpErrorResponse
+                && error.status === 401
+              ) {
+                return of(null);
+              }
+
+              this.destinationSearchErrorMessage.set(
+                error instanceof HttpErrorResponse
+                && error.status === 403
+                  ? 'Non hai i permessi per consultare le destinazioni.'
+                  : 'Impossibile cercare le destinazioni. Riprova.'
+              );
+
+              return of(null);
+            }),
+            finalize(() => {
+              this.searchingDestinations.set(false);
+            })
+          );
+        }
+      ),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(page => {
+      this.destinationPage.set(page);
+    });
+
+    this.destinationSearch.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
+      // Il testo è cambiato: la precedente città non è più selezionata.
+      this.selectedDestination.set(null);
+      this.form.controls.destinationCityId.setValue(null);
+      this.form.controls.destinationCityId.markAsDirty();
+
+      this.searchDestinations();
+    });
+  }
+
+  searchDestinations(page = 0): void {
+    if (
+      this.saving()
+      || !this.formVisible()
+      || this.selectedDestination() !== null
+    ) {
+      return;
+    }
+
+    this.destinationSearchRequests.next({
+      query: this.destinationSearch.value.trim(),
+      page
+    });
+  }
+
+  selectDestination(city: DestinationCity): void {
+    if (
+      this.saving()
+      || this.searchingDestinations()
+      || !this.formVisible()
+    ) {
+      return;
+    }
+
+    // Annulla la ricerca e nasconde l'elenco dei risultati.
+    this.destinationSearchRequests.next(null);
+
+    this.selectedDestination.set(city);
+
+    // Scrittura programmatica: conserva la selezione appena effettuata.
+    this.destinationSearch.setValue(
+      city.name,
+      { emitEvent: false }
+    );
+
+    this.form.controls.destinationCityId.setValue(city.id);
+    this.form.controls.destinationCityId.markAsDirty();
+    this.form.controls.destinationCityId.markAsTouched();
+  }
+
+  changeDestinationPage(page: number): void {
+    const currentPage = this.destinationPage();
+
+    if (
+      this.saving()
+      || this.searchingDestinations()
+      || currentPage === null
+      || page < 0
+      || page >= currentPage.totalPages
+      || page === currentPage.page
+    ) {
+      return;
+    }
+
+    this.searchDestinations(page);
+  }
+
+  private resetDestinationSearch(): void {
+    // Annulla sia una richiesta HTTP sia un'attesa ancora in corso.
+    this.destinationSearchRequests.next(null);
+
+    this.destinationSearch.reset('', { emitEvent: false });
+    this.selectedDestination.set(null);
+    this.destinationPage.set(null);
+    this.searchingDestinations.set(false);
+    this.destinationSearchErrorMessage.set('');
   }
 
   openForm(): void {
@@ -125,6 +313,7 @@ export class AdminRoutes implements OnInit {
 
     this.editingRouteId.set(null);
     this.form.reset();
+    this.resetDestinationSearch();
     this.serverFieldErrors.set({});
     this.saveErrorMessage.set('');
     this.actionErrorMessage.set('');
@@ -137,13 +326,27 @@ export class AdminRoutes implements OnInit {
       return;
     }
 
+    this.resetDestinationSearch();
     this.editingRouteId.set(route.id);
 
     this.form.reset({
-      destinationCity: route.destinationCity,
-      destinationCountryCode: route.destinationCountryCode,
+      destinationCityId: route.destinationCityId,
       returnEnabled: route.returnEnabled
     });
+
+    // Ricostruisce la selezione usando i dati già presenti nella risposta.
+    this.selectedDestination.set({
+      id: route.destinationCityId,
+      name: route.destinationCity,
+      countryCode: route.destinationCountryCode,
+      admin1Name: route.destinationAdmin1Name,
+      admin2Name: route.destinationAdmin2Name
+    });
+
+    this.destinationSearch.setValue(
+      route.destinationCity,
+      { emitEvent: false }
+    );
 
     this.serverFieldErrors.set({});
     this.saveErrorMessage.set('');
@@ -159,6 +362,7 @@ export class AdminRoutes implements OnInit {
 
     this.editingRouteId.set(null);
     this.form.reset();
+    this.resetDestinationSearch();
     this.serverFieldErrors.set({});
     this.saveErrorMessage.set('');
     this.formVisible.set(false);
@@ -280,6 +484,7 @@ export class AdminRoutes implements OnInit {
     });
   }
 
+
   submit(): void {
     if (this.saving() || this.loading()) {
       return;
@@ -289,26 +494,25 @@ export class AdminRoutes implements OnInit {
     this.serverFieldErrors.set({});
     this.successMessage.set('');
 
-    this.normalizeDestination();
     this.form.markAllAsTouched();
 
     const values = this.form.getRawValue();
 
     if (
       this.form.invalid
-      || values.destinationCountryCode === null
+      || values.destinationCityId === null
       || values.returnEnabled === null
     ) {
       return;
     }
 
+    // Nome e paese saranno ricavati dal backend attraverso questo ID.
     const request: CreateRouteRequest = {
-      destinationCity: values.destinationCity,
-      destinationCountryCode: values.destinationCountryCode,
+      destinationCityId: values.destinationCityId,
       returnEnabled: values.returnEnabled
     };
 
-    // Memorizziamo la modalità e la pagina per questa operazione.
+    // Conserva la modalità e la pagina per tutta la richiesta.
     const editingId = this.editingRouteId();
     const pageToReload = editingId === null
       ? 0
@@ -320,28 +524,31 @@ export class AdminRoutes implements OnInit {
 
     this.saving.set(true);
     this.form.disable({ emitEvent: false });
+    this.destinationSearch.disable({ emitEvent: false });
 
-      request$.pipe(
+    request$.pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
         this.saving.set(false);
         this.form.enable({ emitEvent: false });
+        this.destinationSearch.enable({ emitEvent: false });
       })
     ).subscribe({
-        next: () => {
-          this.editingRouteId.set(null);
-          this.form.reset();
-          this.serverFieldErrors.set({});
-          this.formVisible.set(false);
+      next: () => {
+        this.editingRouteId.set(null);
+        this.form.reset();
+        this.resetDestinationSearch();
+        this.serverFieldErrors.set({});
+        this.formVisible.set(false);
 
-          this.successMessage.set(
-            editingId === null
-              ? 'Tratta creata correttamente.'
-              : 'Tratta modificata correttamente.'
-          );
+        this.successMessage.set(
+          editingId === null
+            ? 'Tratta creata correttamente.'
+            : 'Tratta modificata correttamente.'
+        );
 
-          this.loadRoutes(pageToReload);
-        },
+        this.loadRoutes(pageToReload);
+      },
       error: (error: unknown) => {
         if (error instanceof HttpErrorResponse) {
           switch (error.status) {
@@ -372,14 +579,7 @@ export class AdminRoutes implements OnInit {
 
             case 409:
               this.saveErrorMessage.set(
-                'Esiste già una tratta con questa destinazione e paese.'
-              );
-              return;
-
-            case 0:
-              this.saveErrorMessage.set(
-                'Impossibile confermare il salvataggio. '
-                + 'Verifica l’elenco prima di riprovare.'
+                'Esiste già una tratta con questa destinazione.'
               );
               return;
           }
@@ -392,6 +592,9 @@ export class AdminRoutes implements OnInit {
       }
     });
   }
+
+  // -----------------------------------------------------------------------------------------------------
+
 
   private parseFieldErrors(body: unknown): RouteFieldErrors {
     const result: RouteFieldErrors = {};
@@ -417,8 +620,7 @@ export class AdminRoutes implements OnInit {
     for (const [field, message] of Object.entries(errors)) {
       if (
         (
-          field === 'destinationCity'
-          || field === 'destinationCountryCode'
+          field === 'destinationCityId'
           || field === 'returnEnabled'
         )
         && typeof message === 'string'

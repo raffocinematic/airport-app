@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-remove-route-destination-text-columns
+      author: raffo
+      runInTransaction: true
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE public.routes
+                  DROP CONSTRAINT ck_routes_destination_city,
+                  DROP CONSTRAINT ck_routes_normalized_destination,
+                  DROP CONSTRAINT ck_routes_country,
+
+                  DROP COLUMN destination_city,
+                  DROP COLUMN normalized_destination_city,
+                  DROP COLUMN destination_country_code;

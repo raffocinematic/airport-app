@@ -1,0 +1,71 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-create-destination-city-aliases
+      author: raffo
+      changes:
+        - createTable:
+            tableName: destination_city_aliases
+            columns:
+              - column:
+                  # Identificativo interno dell'alias.
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+
+              - column:
+                  # Identificativo GeoNames della città associata.
+                  name: city_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: name
+                  type: varchar(400)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: normalized_name
+                  type: varchar(400)
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: destination_city_aliases
+            baseColumnNames: city_id
+            referencedTableName: destination_cities
+            referencedColumnNames: id
+            constraintName: fk_destination_city_aliases_city
+            onDelete: RESTRICT
+
+        - addUniqueConstraint:
+            tableName: destination_city_aliases
+            columnNames: city_id, normalized_name
+            constraintName: uk_destination_city_aliases_city_name
+
+        - createIndex:
+            tableName: destination_city_aliases
+            indexName: idx_destination_city_aliases_normalized_name
+            columns:
+              - column:
+                  name: normalized_name
+
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE destination_city_aliases
+                  ADD CONSTRAINT ck_destination_city_aliases_name
+                      CHECK (
+                          name = btrim(name)
+                          AND char_length(name) > 0
+                      ),
+
+                  ADD CONSTRAINT ck_destination_city_aliases_normalized_name
+                      CHECK (
+                          normalized_name = btrim(normalized_name)
+                          AND char_length(normalized_name) > 0
+                      );

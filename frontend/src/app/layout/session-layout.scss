@@ -18,8 +18,8 @@
 
 .home-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  grid-template-areas: 'welcome brand logout';
+  grid-template-columns: minmax(7rem, 1fr) minmax(0, 32rem) minmax(7rem, 1fr);
+  grid-template-areas: 'start welcome logout';
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
@@ -29,34 +29,58 @@
   box-shadow: 0 4px 16px #0759850a;
 }
 
+.header-start {
+  grid-area: start;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.header-center {
+  grid-area: welcome;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .home-brand {
-  grid-area: brand;
-  justify-self: center;
-  color: #075985;
-  font-size: 0.85rem;
+  color: #0369a1;
+  font-size: 0.7rem;
   font-weight: 750;
-  letter-spacing: 0.12em;
+  line-height: 1.4;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .user-welcome {
-  grid-area: welcome;
   min-width: 0;
-  text-align: left;
-  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .user-welcome p {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
-  line-height: 1.5;
+  margin: 0 0 0.5rem;
+  color: #475569;
+  font-size: clamp(1.125rem, 1rem + 0.5vw, 1.375rem);
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.user-welcome strong {
+  color: #0c4a6e;
+  font-weight: 750;
 }
 
 .user-role {
   box-sizing: border-box;
   display: inline-block;
   max-width: 100%;
-  padding: 0.25rem 0.65rem;
+  padding: 0.25rem 0.85rem;
   border: 1px solid #bae6fd;
   border-radius: 999px;
   color: #075985;
@@ -124,36 +148,84 @@ button:disabled {
 }
 
 .session-content {
-  display: grid;
+  display: flex;
   flex: 1;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'view';
-  gap: 1.5rem;
-}
-
-.session-content--admin {
-  grid-template-columns: minmax(0, 1fr) 14rem;
-  grid-template-areas: 'view menu';
 }
 
 .session-view {
-  grid-area: view;
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
 }
 
+// Il dialog copre lo schermo; il pannello occupa solo il lato sinistro.
+// Non impostiamo display: flex sul dialog: da chiuso deve restare nascosto.
+.menu-dialog {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  overflow: hidden;
+}
+
+.menu-dialog::backdrop {
+  background: #0f172a66;
+}
+
+.menu-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: min(18rem, 85vw);
+  height: 100%;
+  padding: 1.25rem;
+  border-right: 1px solid #d8eaf5;
+  background: #ffffff;
+  box-shadow: 8px 0 32px #07598526;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.menu-dialog[open] .menu-panel {
+  animation: menu-enter 200ms ease-out;
+}
+
+.menu-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.menu-panel__header h2 {
+  min-width: 0;
+  margin: 0;
+  color: #075985;
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.menu-close-button {
+  flex-shrink: 0;
+  padding: 0.65rem 0.85rem;
+}
+
 .admin-menu {
-  grid-area: menu;
-  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 1rem;
-  border: 1px solid #d8eaf5;
-  border-radius: 1rem;
-  background: #ffffffd9;
 }
 
 .admin-menu a {
@@ -180,22 +252,32 @@ button:disabled {
   outline-offset: 3px;
 }
 
-@media (max-width: 800px) {
-  .session-content--admin {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'menu'
-      'view';
+@keyframes menu-enter {
+  from {
+    transform: translateX(-100%);
   }
 
-@media (max-width: 640px) {
-  .home-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'brand brand'
-      'welcome logout';
-    padding: 1rem;
+  to {
+    transform: translateX(0);
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .menu-dialog[open] .menu-panel {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-header {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'welcome welcome'
+      'start logout';
+    padding: 1rem;
+  }
+
+  .header-start {
+    gap: 0.75rem;
+  }
 }

@@ -7,3 +7,21 @@ databaseChangeLog:
 
   - include:
       file: db/changelog/003-add-route-active.yaml
+
+  - include:
+      file: db/changelog/004-create-destination-cities.yaml
+
+  - include:
+      file: db/changelog/005-create-destination-city-aliases.yaml
+
+  - include:
+      file: db/changelog/006-add-route-destination-city.yaml
+
+  - include:
+      file: db/changelog/007-link-existing-route-destinations.yaml
+
+  - include:
+      file: db/changelog/008-enforce-route-destination-constraints.yaml
+
+  - include:
+      file: db/changelog/009-remove-route-destination-text-columns.yaml

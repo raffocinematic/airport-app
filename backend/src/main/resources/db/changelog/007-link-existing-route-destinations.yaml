@@ -1,0 +1,107 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-link-existing-route-destinations
+      author: raffo
+      runInTransaction: true
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $migration$
+              DECLARE
+                  route_row record;
+                  mapped_city_id bigint;
+              BEGIN
+                  LOCK TABLE public.routes
+                      IN SHARE ROW EXCLUSIVE MODE;
+
+                  FOR route_row IN
+                      SELECT
+                          id,
+                          destination_city,
+                          destination_country_code,
+                          destination_city_id,
+                          return_enabled
+                      FROM public.routes
+                      ORDER BY id
+                  LOOP
+                      -- Associazioni verificate per le tratte esistenti.
+                      SELECT mapping.city_id
+                      INTO mapped_city_id
+                      FROM (
+                          VALUES
+                              ('milano',  'IT', 3173435::bigint),
+                              ('roma',    'IT', 3169070::bigint),
+                              ('londra',  'GB', 2643743::bigint),
+                              ('palermo', 'IT', 2523920::bigint),
+                              ('torino',  'IT', 3165524::bigint)
+                      ) AS mapping(city_name, country_code, city_id)
+                      WHERE mapping.city_name =
+                              lower(btrim(route_row.destination_city))
+                        AND mapping.country_code =
+                              route_row.destination_country_code;
+
+                      IF mapped_city_id IS NULL THEN
+                          RAISE EXCEPTION
+                              'No approved destination for route %: % (%)',
+                              route_row.id,
+                              route_row.destination_city,
+                              route_row.destination_country_code;
+                      END IF;
+
+                      -- Controlla città, paese e alias nel catalogo.
+                      IF NOT EXISTS (
+                          SELECT 1
+                          FROM public.destination_cities c
+                          WHERE c.id = mapped_city_id
+                            AND c.country_code =
+                                  route_row.destination_country_code
+                            AND EXISTS (
+                                SELECT 1
+                                FROM public.destination_city_aliases a
+                                WHERE a.city_id = c.id
+                                  AND a.normalized_name =
+                                      lower(btrim(route_row.destination_city))
+                            )
+                      ) THEN
+                          RAISE EXCEPTION
+                              'Catalog mismatch for route % and city %',
+                              route_row.id,
+                              mapped_city_id;
+                      END IF;
+
+                      IF route_row.destination_city_id IS NOT NULL
+                          AND route_row.destination_city_id <> mapped_city_id
+                      THEN
+                          RAISE EXCEPTION
+                              'Conflicting destination link for route %',
+                              route_row.id;
+                      END IF;
+
+                      IF mapped_city_id IN (3173435, 3169070)
+                          AND NOT route_row.return_enabled
+                      THEN
+                          RAISE EXCEPTION
+                              'Return connection required for route %',
+                              route_row.id;
+                      END IF;
+
+                      UPDATE public.routes
+                      SET destination_city_id = mapped_city_id
+                      WHERE id = route_row.id
+                        AND destination_city_id IS NULL;
+                  END LOOP;
+
+                  -- Considera anche le tratte disattivate.
+                  IF EXISTS (
+                      SELECT 1
+                      FROM public.routes
+                      GROUP BY origin_city, destination_city_id
+                      HAVING count(*) > 1
+                  ) THEN
+                      RAISE EXCEPTION
+                          'Duplicate routes after destination reconciliation';
+                  END IF;
+              END;
+              $migration$;

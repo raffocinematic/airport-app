@@ -114,6 +114,17 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(InvalidDestinationException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidDestination(
+            InvalidDestinationException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                exception.getFieldErrors()
+        );
+    }
+
     // --------------------------------------------------------------------------------
 
 

@@ -1,0 +1,27 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-enforce-route-destination-constraints
+      author: raffo
+      runInTransaction: true
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE public.routes
+                  ALTER COLUMN destination_city_id SET NOT NULL,
+
+                  DROP CONSTRAINT uk_routes_origin_destination_country,
+                  DROP CONSTRAINT ck_routes_destination_not_napoli,
+                  DROP CONSTRAINT ck_routes_return_enabled,
+
+                  ADD CONSTRAINT uk_routes_origin_destination_city
+                      UNIQUE (origin_city, destination_city_id),
+
+                  ADD CONSTRAINT ck_routes_destination_not_origin
+                      CHECK (destination_city_id <> 3172394),
+
+                  ADD CONSTRAINT ck_routes_return_required
+                      CHECK (
+                          destination_city_id NOT IN (3173435, 3169070)
+                          OR return_enabled
+                      );

@@ -32,6 +32,15 @@ import java.time.Clock;
 import org.springframework.web.filter.CorsFilter;
 import tools.jackson.databind.ObjectMapper;
 
+
+/**
+ * Configura la sicurezza HTTP del backend:
+ * autenticazione tramite JWT Bearer, autorizzazione per ruolo,
+ * gestione degli errori, CORS e limitazione dei tentativi di login.
+ * <p>
+ * Le API usano autenticazione stateless e permessi espliciti:
+ * le richieste non autorizzate da una regola vengono negate.
+ */
 @Configuration
 @EnableConfigurationProperties({
         CorsProperties.class,
@@ -53,13 +62,18 @@ public class SecurityConfig {
         this.customAccessDeniedHandler = customAccessDeniedHandler;
     }
 
+    /**
+     * Costruisce la catena di filtri applicata alle richieste HTTP.
+     * HttpSecurity configura i controlli; build() produce la catena.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain( HttpSecurity http,
-                                                    LoginRateLimiter rateLimiter,
-                                                    ObjectMapper objectMapper,
-                                                    Clock clock) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   LoginRateLimiter rateLimiter,
+                                                   ObjectMapper objectMapper,
+                                                   Clock clock) throws Exception {
 
-        // Gestiamo esplicitamente la costruzione del filtro, passando le dipendenze ricevute da Spring
+        // Registriamo il filtro soltanto nella catena Spring Security,
+        // evitando una registrazione aggiuntiva come filtro del servlet container.
         LoginRateLimitFilter loginRateLimitFilter =
                 new LoginRateLimitFilter(
                         rateLimiter,
@@ -69,8 +83,15 @@ public class SecurityConfig {
 
         return http
                 .cors(Customizer.withDefaults())
+                // Eseguiamo il controllo dei tentativi dopo CORS:
+                // anche le risposte 429 devono avere gli header CORS necessari.
                 .addFilterAfter(loginRateLimitFilter, CorsFilter.class)
+                // Il client invia esplicitamente il Bearer nell'header Authorization;
+                // l'autenticazione non si basa su cookie inviati automaticamente.
+                // Rivedere questa scelta se verrà introdotta autenticazione tramite cookie.
                 .csrf(AbstractHttpConfigurer::disable)
+                // Spring Security non conserva l'autenticazione in HttpSession:
+                // ogni richiesta protetta deve presentare un Bearer valido.
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -96,6 +117,12 @@ public class SecurityConfig {
                         ).authenticated()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/operatori/**").hasRole("OPERATORI")
+
+                        // Il catalogo delle destinazioni è consultabile dagli ADMIN.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/destination-cities"
+                        ).hasRole("ADMIN")
 
                         .requestMatchers(
                                 HttpMethod.GET,
@@ -156,6 +183,11 @@ public class SecurityConfig {
         return new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     }
 
+    /**
+     * Definisce la politica CORS delle API usando le origini configurate.
+     * CORS regola l'accesso cross-origin dei browser;
+     * autenticazione e autorizzazione restano controlli separati.
+     */
     @Bean
     public UrlBasedCorsConfigurationSource corsConfigurationSource(
             CorsProperties properties
@@ -193,6 +225,7 @@ public class SecurityConfig {
 
     }
 
+    // Fornisce l'orario UTC ai componenti che ricevono Clock: nei test può essere sostituito con un Clock fisso.
     @Bean
     public Clock clock() {
         return Clock.systemUTC();

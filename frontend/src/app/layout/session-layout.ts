@@ -1,5 +1,11 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
-import type { OnInit } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  inject,
+  signal,
+  viewChild
+} from '@angular/core';
+import type { ElementRef, OnInit } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
@@ -40,12 +46,99 @@ export class SessionLayout implements OnInit {
   // Logout in corso
   readonly loggingOut = signal(false);
 
+  // Stato del menù utilizzato dal template.
+  readonly menuOpen = signal(false);
+
+// Riferimento al dialog identificato da #adminMenu nel template.
+  private readonly menuDialog =
+    viewChild<ElementRef<HTMLDialogElement>>('adminMenu');
+
+// Conserva gli stili originali per ripristinare lo scorrimento.
+  private pageScroll: {
+    root: HTMLElement;
+    overflow: string;
+    scrollbarGutter: string;
+  } | null = null;
+
   private readonly router = inject(Router);
   private readonly authSession = inject(AuthSession);
 
-  // Angular esegue questo metodo una volta per istanza, durante l’inizializzazione.
   ngOnInit(): void {
+    // Ripristina lo scorrimento anche se si abbandona il layout
+    // mentre il menù è aperto.
+    this.destroyRef.onDestroy(() => this.restorePageScroll());
+
     this.loadProfile();
+  }
+
+  openMenu(): void {
+    const dialog = this.menuDialog()?.nativeElement;
+
+    // Il pannello è disponibile soltanto per l'amministratore.
+    if (
+      !dialog ||
+      dialog.open ||
+      this.loggingOut() ||
+      this.profile()?.role !== 'ADMIN'
+    ) {
+      return;
+    }
+
+    dialog.showModal();
+
+    const root = dialog.ownerDocument.documentElement;
+    const viewportWidth =
+      dialog.ownerDocument.defaultView?.innerWidth ?? root.clientWidth;
+
+    this.pageScroll = {
+      root,
+      overflow: root.style.overflow,
+      scrollbarGutter: root.style.scrollbarGutter
+    };
+
+    // Mantiene lo spazio della barra di scorrimento, se già presente.
+    if (viewportWidth > root.clientWidth) {
+      root.style.scrollbarGutter = 'stable';
+    }
+
+    root.style.overflow = 'hidden';
+    this.menuOpen.set(true);
+  }
+
+  closeMenu(): void {
+    this.menuDialog()?.nativeElement.close();
+    this.onMenuClosed();
+  }
+
+  onMenuClosed(): void {
+    // Evita che un vecchio evento di chiusura interferisca
+    // con un pannello già riaperto.
+    if (this.menuDialog()?.nativeElement.open) {
+      return;
+    }
+
+    this.menuOpen.set(false);
+    this.restorePageScroll();
+  }
+
+  onMenuBackdropClick(event: MouseEvent): void {
+    // Chiude soltanto quando il clic arriva sullo sfondo,
+    // non quando proviene dagli elementi interni del pannello.
+    if (event.target === event.currentTarget) {
+      this.closeMenu();
+    }
+  }
+
+  private restorePageScroll(): void {
+    const previous = this.pageScroll;
+
+    if (!previous) {
+      return;
+    }
+
+    previous.root.style.overflow = previous.overflow;
+    previous.root.style.scrollbarGutter = previous.scrollbarGutter;
+    this.pageScroll = null;
   }
 
   // Evita caricamenti sovrapposti e nuove richieste mentre l’utente sta uscendo.

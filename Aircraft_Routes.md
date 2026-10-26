@@ -1,10 +1,10 @@
 # Airport App — Modelli di aereo e tratte
 
-**Aggiornamento:** 24 ottobre 2026.
+**Aggiornamento:** 26 ottobre 2026.
 
 **Fonte:** [Airport_App_Analisi_Funzionale_Tecnica.md](FROM_CUSTOMER_Airport_App_Analisi_Funzionale_Tecnica.md), versione 0.4 del 18 ottobre 2026. Riferimenti principali: sezioni 1–6, 7, 9–12 e 14.
 
-Questo documento raccoglie il lavoro relativo a modelli di aereo, tratte e relative schermate amministrative. Distingue le richieste del cliente dalle proposte tecniche e dalle decisioni ancora aperte. Registra inoltre l’estensione richiesta dall’utente durante lo sviluppo: modifica, attivazione/disattivazione e cancellazione definitiva delle tratte.
+Questo documento raccoglie il lavoro relativo a modelli di aereo, tratte e relative schermate amministrative. Distingue le richieste del cliente dalle proposte tecniche e dalle decisioni ancora aperte. Registra inoltre le estensioni richieste dall’utente durante lo sviluppo: modifica, attivazione/disattivazione e cancellazione definitiva delle tratte, catalogo geografico e paese ricavato dalla città selezionata.
 
 ## 1. Stato attuale e legenda
 
@@ -20,12 +20,13 @@ Lo stato deriva dai sorgenti e dalle prove registrate nella sessione. Implementa
 | --- | --- | --- |
 | Auth, profilo e logout | Presenti; riferimento in [LoginRegisterAuth_JWT_Flow.md](LoginRegisterAuth_JWT_Flow.md) | Non estendere gli esiti auth a scenari non provati |
 | Landing e navigazione | ADMIN su `/admin`, OPERATORI su `/home`, menu destro e guard | Riscontri visivi; navigazione ADMIN verificata in Chromium con auth simulata |
-| Tratte backend | GET, POST, PUT, PATCH stato e DELETE; regole ADMIN, validazioni e transazioni | Prove Postman/SQL e primo test di integrazione confermati dall’utente; concorrenza da verificare |
-| Schema tratte | Migrazioni `002-create-routes.yaml` e `003-add-route-active.yaml` nel master | Colonna `active` visibile nello screenshot pgAdmin; verifica dei cambiamenti riferita dall’utente |
-| Tratte frontend | Lista, creazione, modifica, stato, cancellazione con conferma, paginazione ed errori | Build e 10 controlli Chromium con API simulate superati il 24 ottobre; test Angular del 23 ottobre conservati come evidenza storica |
+| Tratte backend | CRUD e stato; destinazione risolta per ID e paese derivato dal catalogo | Implementazione letta nei sorgenti; prove precedenti al catalogo conservate come evidenza storica |
+| Schema tratte e catalogo | Migrazioni 002–009 presenti nel master; associazione obbligatoria alla città | Applicazione delle migrazioni 007–009 non attestata da un output di esecuzione acquisito |
+| Catalogo geografico | Città e alias IT/GB; importatore manuale con SHA-256 | Output condiviso dall’utente: 90414 città elaborate e 96894 alias scritti |
+| Tratte frontend | CRUD, ricerca paginata, selezione della città e paese derivato | Sorgenti aggiornati; nessuna nuova evidenza di build o del flusso completo dopo il passaggio al catalogo |
 | Modelli di aereo | NON IMPLEMENTATO: modulo, migrazione, API e pagina assenti | DA ESEGUIRE dopo lo sviluppo |
 
-Le prove odierne nel browser non hanno chiamato il backend reale né modificato PostgreSQL. Le conferme dell’utente sono riportate separatamente nella sezione 7.
+Le prove browser del 23–24 ottobre riguardano la versione precedente al catalogo geografico. Non certificano il nuovo contratto basato su `destinationCityId`. Le evidenze disponibili sono distinte nella sezione 7.
 
 ## 2. Richiesta del cliente e perimetro
 
@@ -135,108 +136,220 @@ Modulo backend `aircraftmodels`, entità `AircraftModel`, tabella `aircraft_mode
 
 L’unicità deve essere garantita anche se due inserimenti concorrenti superano il controllo preliminare: nessun duplicato persistito e risposta `409` per il conflitto.
 
-## 5. Tratte — IMPLEMENTATO, VERIFICHE PARZIALI
+## 5. Tratte con catalogo geografico — IMPLEMENTATO NEI SORGENTI
 
-### Campi e regole funzionali
+### Regole funzionali
 
-Dalla voce `Tratte`, l’ADMIN seleziona `Aggiungi tratta`.
+La destinazione è una città selezionata dal catalogo locale GeoNames. Il backend riceve il suo ID e ricava nome e paese dal catalogo.
 
-**Stato:** backend e frontend presenti. Il form usa validazioni reattive, rimozione degli spazi esterni, scelte iniziali vuote per paese e ritorno e controlli sulle regole di Napoli, Milano e Roma. Sono ammessi attualmente soltanto `IT` e `GB`; il catalogo europeo più ampio resta da definire.
+| Dato | Regola |
+| --- | --- |
+| Origine | Napoli, assegnata dal backend e non modificabile |
+| Destinazione | ID obbligatorio, positivo e appartenente al catalogo |
+| Paese | Derivato dalla città selezionata; attualmente `IT` oppure `GB` |
+| Ritorno | Scelta esplicita; obbligatorio per gli ID di Milano e Roma |
+| Tipo | `NAZIONALE` per IT, `INTERNAZIONALE` per GB |
+| Stato iniziale | Attiva |
 
-| Campo | Obbligatorio | Regola dell’analisi |
+Le regole identificano le città tramite ID:
+
+| Città | ID GeoNames | Regola |
 | --- | --- | --- |
-| Città di origine | Sì | Napoli, precompilata e non modificabile in questa fase; vincolo applicato anche sul server |
-| Città di destinazione | Sì | Testo non vuoto, massimo 100 caratteri, diverso da Napoli |
-| Paese di destinazione | Sì | Codice selezionato da un elenco coerente con le destinazioni europee; `IT` per Italia, `GB` per Regno Unito |
-| Collegamento di ritorno | Sì | Scelta esplicita Sì/No; deve essere Sì per Milano e Roma |
+| Napoli | 3172394 | Destinazione vietata |
+| Milano | 3173435 | Ritorno obbligatorio |
+| Roma | 3169070 | Ritorno obbligatorio |
 
-- Il tipo della tratta è derivato: `NAZIONALE` per `IT`, `INTERNAZIONALE` per gli altri paesi. Non deve essere un secondo valore liberamente modificabile.
-- Un record rappresenta una rotta commerciale con origine Napoli. Il flag di ritorno abilita la direzione inversa senza creare una seconda rotta.
-- Bloccare duplicati sulla combinazione origine, destinazione normalizzata e paese, anche nel database e con richieste concorrenti.
-- La destinazione normalizzata è calcolata dal backend; il client non decide i valori usati per l’unicità.
-- Non richiedere modello di aereo, aeromobile, date, orari, prezzi o numero di voli giornalieri.
+Le città omonime con ID diversi sono destinazioni distinte. L’unicità comprende origine e ID della destinazione, anche per le tratte disattivate.
+
+Un record rappresenta una rotta commerciale. Il ritorno abilita la direzione inversa senza creare un secondo record. Date, orari, aeromobili e aeroporti specifici restano fuori perimetro.
 
 ### Dati iniziali
 
 Le tratte iniziali vanno inserite dal gestionale, non costituiscono un limite massimo di record e non richiedono una preconfigurazione automatica.
 
-| Origine | Destinazione | Paese | Tipo derivato | Ritorno |
-| --- | --- | --- | --- | --- |
-| Napoli | Milano | `IT` | `NAZIONALE` | Sì, richiesto |
-| Napoli | Roma | `IT` | `NAZIONALE` | Sì, richiesto |
-| Napoli | Londra | `GB` | `INTERNAZIONALE` | Scelta esplicita; requisito del cliente ancora da confermare |
+| Origine | Destinazione | ID GeoNames | Paese | Tipo derivato | Ritorno |
+| --- | --- | --- | --- | --- | --- |
+| Napoli | Milano | 3173435 | IT | NAZIONALE | Sì, richiesto |
+| Napoli | Roma | 3169070 | IT | NAZIONALE | Sì, richiesto |
+| Napoli | Londra | 2643743 | GB | INTERNAZIONALE | Scelta esplicita; requisito del cliente ancora da confermare |
 
-Le destinazioni europee comprendono il Regno Unito: non confondere il perimetro geografico europeo con l’appartenenza all’Unione europea. Gli aeroporti specifici nelle città non sono ancora stati scelti.
+Il perimetro geografico comprende il Regno Unito; l’ampliamento ad altri paesi resta da definire.
 
-### Inserimento, modifica, stato ed eliminazione
+### Interfaccia amministrativa
 
-- La lista mostra origine, destinazione, paese, tipo derivato, ritorno, stato e azioni. Include sia tratte attive sia disattivate, senza filtri in questa versione.
-- `Aggiungi tratta` apre il form vuoto; `Modifica` lo compila usando i dati della riga. L’ID selezionato distingue POST e PUT.
-- La modifica riguarda destinazione, paese e ritorno. Conserva ID, origine, data di creazione e stato; è consentita anche su tratte disattivate.
-- `Annulla` chiude il form e azzera la selezione senza inviare una scrittura. Gli errori di salvataggio conservano i valori.
-- Le nuove tratte sono attive. `Disattiva` invia `{ "active": false }`; `Attiva` invia `{ "active": true }`. Ripetere lo stesso stato è ammesso dal backend.
-- L’unicità comprende anche le tratte disattivate: per riutilizzarle occorre riattivarle, non creare duplicati.
-- `Elimina` mostra una conferma del browser con origine, destinazione e paese. Annullare non invia DELETE; confermare elimina fisicamente il record, attivo o disattivato.
-- I tre comandi sono raggruppati con spaziatura e disposizione flessibile; Elimina è rosso e mantiene focus visibile e comportamento da tastiera.
+- Ricerca per inizio del nome o di un alias, con testo da 2 a 100 caratteri.
+- Attesa di 300 ms prima della richiesta e annullamento della ricerca precedente.
+- Risultati paginati, fino a 20 città per pagina.
+- Visualizzazione di nome, paese e informazioni amministrative disponibili.
+- Selezione esplicita della città: il solo testo digitato non basta.
+- Cambio del testo con cancellazione immediata della precedente selezione.
+- Paese mostrato come informazione della città selezionata.
+- Modifica precompilata usando ID e dati già ricevuti nella lista.
 
-**Richieste e messaggi:** durante una scrittura vengono bloccate altre azioni e la paginazione; durante un form aperto sono bloccate le azioni sulle righe. Il form viene disabilitato durante POST/PUT. Al successo si chiude e si azzera; dopo la creazione si carica la prima pagina, dopo modifica/stato/eliminazione si ricarica quella corrente. Gli errori delle azioni sono visibili anche fuori dal form. I dettagli `fieldErrors` sono mostrati sui tre campi noti e ripuliti alla modifica dei valori, apertura/reset e nuovo invio.
+Il form usa validazioni Angular; il backend applica autonomamente le validazioni e le regole di business.
 
-**Paginazione:** il frontend richiede 10 elementi. Se la pagina non esiste più dopo una cancellazione, `loadValidRoutePage()` calcola `max(0, totalPages - 1)` e carica l’ultima disponibile, ripetendo il controllo se necessario. Il caricamento rimane attivo fino alla risposta finale. Se non rimangono tratte, carica la pagina 0 vuota, mostra il messaggio dedicato e nasconde la paginazione.
+### Gestione delle tratte
 
-Un errore della GET successiva non cancella la conferma della scrittura riuscita. `Riprova` ripete soltanto il caricamento della lista. Le scritture non vengono ritentate automaticamente in caso di esito incerto.
+- Lista paginata con tratte attive e disattivate e contesto amministrativo.
+- Creazione e modifica di destinazione e ritorno.
+- La modifica conserva ID, origine, data di creazione e stato; è consentita anche su tratte disattivate.
+- Disattivazione e riattivazione senza eliminare la riga; ripetere lo stesso stato è ammesso.
+- L’unicità comprende le tratte disattivate: per riutilizzarle occorre riattivarle.
+- Eliminazione definitiva dopo conferma del browser; annullare non invia DELETE.
+- Annullamento del modulo senza scritture e con reset dei dati.
+- Conservazione dei valori in caso di errore di salvataggio.
+- Blocco dei controlli durante il salvataggio e delle azioni sulle righe durante un form aperto.
+- Errori del server riconosciuti per `destinationCityId` e `returnEnabled`, ripuliti alla modifica dei valori e al reset.
 
-### Modello dati implementato
+Dopo la creazione si carica la prima pagina delle tratte. Dopo modifica, cambio stato ed eliminazione si ricarica quella corrente. Se una cancellazione rende inesistente la pagina, viene recuperata l’ultima disponibile. L’elenco vuoto nasconde la paginazione.
 
-Modulo backend `routes`, entità `Route`, tabella `routes`. [002-create-routes.yaml](backend/src/main/resources/db/changelog/002-create-routes.yaml) crea la tabella; [003-add-route-active.yaml](backend/src/main/resources/db/changelog/003-add-route-active.yaml) aggiunge `active` booleano NOT NULL con default `true`, anche per le righe esistenti. Entrambe sono incluse nel master. Lo screenshot pgAdmin del 24 ottobre mostra la colonna e i dati; l’assistente non ha rieseguito migrazioni sul database dell’utente.
+Una GET fallita dopo una scrittura riuscita conserva il messaggio di successo. Le scritture non vengono ripetute automaticamente; il comando Riprova dell’elenco ripete soltanto GET.
 
-| Campo dell’entità | Significato e vincolo |
+### Modello dati
+
+L’entità `Route` conserva:
+
+| Campo | Significato |
 | --- | --- |
-| `id` | Identificatore UUID |
-| `originCity` | Napoli |
-| `destinationCity` | Destinazione obbligatoria, massimo 100 caratteri, diversa da Napoli |
-| `normalizedDestinationCity` | Destinazione normalizzata calcolata dal backend |
-| `destinationCountryCode` | Codice del paese ammesso |
-| `returnEnabled` | Scelta esplicita del ritorno; vincoli nazionali descritti sopra |
-| `active` | Stato booleano obbligatorio; default `true` |
-| `createdAt` | Istante di creazione UTC |
+| `id` | UUID della tratta |
+| `originCity` | Origine fissa Napoli |
+| `destination` | Associazione obbligatoria a DestinationCity |
+| `returnEnabled` | Disponibilità del ritorno |
+| `active` | Stato della tratta, inizialmente true |
+| `createdAt` | Istante di creazione |
 
-Vincolo univoco composto: origine + destinazione normalizzata + paese. Il tipo nazionale/internazionale si calcola dal paese senza introdurre un campo modificabile ridondante.
+Nome, paese e tipo della destinazione sono ricavati dalla città collegata.
 
-## 6. Backend, API e integrazione frontend — TRATTE IMPLEMENTATE
+La tabella `routes` usa `destination_city_id` come foreign key. Le vecchie colonne `destination_city`, `normalized_destination_city` e `destination_country_code` vengono eliminate dalla migrazione 009. I campi descrittivi restano disponibili nei DTO di risposta.
 
-### Architettura e persistenza
+Vincoli principali definiti nelle migrazioni:
 
-I punti seguenti sono requisiti comuni: implementati per le tratte, ancora da sviluppare per i modelli di aereo. La configurazione attuale usa `spring.jpa.hibernate.ddl-auto=validate`.
+- Foreign key verso `destination_cities` con cancellazione RESTRICT.
+- `destination_city_id NOT NULL`.
+- `uk_routes_origin_destination_city` su `origin_city` e `destination_city_id`.
+- Origine fissa Napoli e divieto dell’ID di Napoli come destinazione.
+- Ritorno obbligatorio per gli ID di Milano e Roma.
 
-- Mantenere Java/Spring Boot, Spring Data JPA/Hibernate, PostgreSQL e Angular/TypeScript già adottati.
-- Organizzare ciascuna funzionalità con controller, service, repository e DTO dedicati; non esporre direttamente le entità JPA.
-- Usare transazioni per le scritture e migrazioni versionate per lo schema. Modifica, cambio stato e cancellazione acquisiscono la riga con lock pessimista tramite `findByIdForUpdate`; l’unicità rimane garantita anche dal database. Il controllo dei duplicati in modifica esclude l’ID corrente.
-- **Allineamento al progetto attuale:** usare Liquibase, già configurato. Flyway compare nella proposta tecnica iniziale, ma non è lo strumento effettivamente adottato.
-- Negli ambienti persistenti Hibernate valida lo schema senza modificarlo automaticamente.
-- Applicare limiti testuali, valori ammessi, obbligatorietà e vincoli numerici nelle API e nello schema PostgreSQL, oltre all’unicità.
-- `AircraftModel` e `Route` restano indipendenti: nessuna relazione o tabella di associazione in questa fase.
+### Migrazioni
 
-### API e stato
+| Numero | Scopo |
+| --- | --- |
+| 002 | Creazione iniziale delle tratte |
+| 003 | Aggiunta dello stato active |
+| 004 | Catalogo delle città |
+| 005 | Alias delle città |
+| 006 | Collegamento inizialmente nullable tra tratta e città |
+| 007 | Associazione delle tratte esistenti agli ID approvati |
+| 008 | Destinazione obbligatoria e vincoli basati sugli ID |
+| 009 | Rimozione delle vecchie colonne geografiche delle tratte |
 
-| Metodo | Percorso | Accesso | Risultato positivo | Implementazione |
-| --- | --- | --- | --- | --- |
-| GET | `/api/v1/aircraft-models` | ADMIN | Lista, `200` | NON IMPLEMENTATO |
-| POST | `/api/v1/aircraft-models` | ADMIN | Creazione, `201` | NON IMPLEMENTATO |
-| GET | `/api/v1/routes` | ADMIN | Lista paginata, `200` | IMPLEMENTATO |
-| POST | `/api/v1/routes` | ADMIN | Creazione, `201` e `RouteResponse` | IMPLEMENTATO |
-| PUT | `/api/v1/routes/{id}` | ADMIN | Modifica, `200` e `RouteResponse` | IMPLEMENTATO |
-| PATCH | `/api/v1/routes/{id}/status` | ADMIN | Cambio stato, `200` e `RouteResponse` | IMPLEMENTATO |
-| DELETE | `/api/v1/routes/{id}` | ADMIN | Eliminazione, `204` senza body | IMPLEMENTATO |
+Le migrazioni sono incluse nel master in questo ordine. La loro presenza nei sorgenti non attesta l’applicazione al database locale.
 
-POST e PUT ricevono `destinationCity`, `destinationCountryCode` e `returnEnabled`. PATCH riceve soltanto `active`, obbligatorio (`false` è valido). `RouteResponse` contiene `id`, `originCity`, `destinationCity`, `destinationCountryCode`, `routeType`, `returnEnabled`, `active`, `createdAt`. Non serve un GET dedicato per ID per compilare il form: i dati sono già nella lista.
+Per le tratte esistenti, la 007 usa le associazioni approvate: Milano 3173435, Roma 3169070, Londra 2643743, Palermo 2523920 e Torino 3165524. La migrazione interrompe l’operazione in presenza di dati che non possono essere riconciliati secondo queste associazioni.
 
-**Paginazione:** `page` parte da 0 e ha default 0; `size` ha default 10 e ammette valori da 1 a 50. Parametri fuori limite producono `400`. Ordinamento `createdAt DESC, id DESC`. `RoutePageResponse` contiene `content`, `page`, `size`, `totalElements`, `totalPages`. Il frontend visualizza il numero pagina partendo da 1.
+### Catalogo geografico
 
-**Sicurezza:** `SecurityConfig` autorizza esplicitamente ADMIN per tutti e cinque i metodi prima di `.anyRequest().denyAll()`. La configurazione CORS include PUT/PATCH/DELETE. I figli di `/admin` restano protetti dal guard frontend. I modelli di aereo richiederanno regole proprie quando saranno implementati.
+Il catalogo locale comprende città e alias per Italia e Regno Unito. Gli ID delle città coincidono con gli ID GeoNames.
 
-**Errori:** `ApiErrorResponse` espone `timestamp`, `status`, `error`, `message`, `fieldErrors`. DTO e regole business producono `400`; UUID non convertibile e body assente/non leggibile sono gestiti esplicitamente. ID valido ma inesistente produce `404`, anche ripetendo DELETE. Autenticazione assente/non valida produce `401`; ruolo insufficiente `403`; duplicati `409`. Un corpo `{}` sulla PATCH è JSON leggibile ma fallisce `@NotNull` prima della ricerca della tratta.
+L’importazione è un comando manuale con controllo SHA-256 e scrittura transazionale. Il normale avvio del backend non scarica né importa i dati.
 
-Il servizio controlla l’unicità prima della scrittura e traduce la violazione del vincolo nominato durante `saveAndFlush`/`flush`. Le collisioni concorrenti e l’effettiva serializzazione dei lock rimangono da verificare. Il frontend distingue gli errori applicabili a ogni operazione e non ripete automaticamente le scritture. Il `429` resta relativo al login.
+Procedura, fonte, licenza e risultato dell’importazione sono documentati nel [README del catalogo](backend/geodata/geonames/README.md).
+
+## 6. Backend, API e integrazione frontend
+
+### Architettura
+
+Controller, service, repository e DTO hanno responsabilità separate. Le entità JPA non vengono esposte direttamente nelle risposte HTTP.
+
+Liquibase gestisce lo schema; Hibernate usa `ddl-auto=validate`. Flyway compare nella proposta tecnica iniziale, ma non è lo strumento adottato.
+
+Le operazioni di scrittura sono transazionali. Modifica, cambio stato ed eliminazione acquisiscono la tratta tramite `findByIdForUpdate` con lock pessimista.
+
+Il controllo preliminare dei duplicati usa l’ID della destinazione. In modifica esclude la tratta corrente. Il vincolo SQL garantisce l’unicità anche tra richieste concorrenti; la violazione del vincolo nominato viene tradotta in HTTP 409. L’esecuzione degli scenari concorrenti non è attestata.
+
+La lista usa un EntityGraph per caricare anche la destinazione. I DTO vengono costruiti all’interno delle transazioni del service, con `open-in-view=false`.
+
+`AircraftModel` e `Route` restano indipendenti: nessuna relazione o tabella di associazione in questa fase.
+
+### API
+
+| Metodo | Percorso | Accesso | Risultato positivo |
+| --- | --- | --- | --- |
+| GET | `/api/v1/destination-cities` | ADMIN | Ricerca paginata, 200 |
+| GET | `/api/v1/routes` | ADMIN | Lista paginata, 200 |
+| POST | `/api/v1/routes` | ADMIN | Creazione, 201 |
+| PUT | `/api/v1/routes/{id}` | ADMIN | Modifica, 200 |
+| PATCH | `/api/v1/routes/{id}/status` | ADMIN | Cambio stato, 200 |
+| DELETE | `/api/v1/routes/{id}` | ADMIN | Eliminazione, 204 senza body |
+
+GET e POST `/api/v1/aircraft-models` restano NON IMPLEMENTATE.
+
+### Richieste di creazione e modifica
+
+POST e PUT ricevono:
+
+```json
+{
+  "destinationCityId": 3173435,
+  "returnEnabled": true
+}
+```
+
+`destinationCityId` deve essere positivo ed esistere nel catalogo. `returnEnabled` è obbligatorio; false è un valore valido quando non contrasta con le regole di Milano e Roma.
+
+Nome e paese non sono campi del contratto di scrittura. Il backend li ricava dalla città identificata dall’ID.
+
+PATCH riceve soltanto `active`, obbligatorio:
+
+```json
+{
+  "active": false
+}
+```
+
+### Risposte
+
+`RouteResponse` contiene:
+
+- `id` e `originCity`.
+- `destinationCityId`, `destinationCity` e `destinationCountryCode`.
+- `destinationAdmin1Name` e `destinationAdmin2Name`, eventualmente null.
+- `routeType`, `returnEnabled`, `active` e `createdAt`.
+
+POST, PUT e PATCH restituiscono RouteResponse. GET delle tratte restituisce `RoutePageResponse`, con `content`, `page`, `size`, `totalElements` e `totalPages`.
+
+La ricerca delle città restituisce `DestinationCityPageResponse` con gli stessi campi di paginazione. Ogni città contiene `id`, `name`, `countryCode`, `admin1Name` e `admin2Name`.
+
+La modifica non richiede un GET dedicato della tratta: i dati necessari sono già presenti nella lista.
+
+### Ricerca e paginazione
+
+| API | Parametri e limiti |
+| --- | --- |
+| Tratte | page da 0, default 0; size default 10, minimo 1, massimo 50 |
+| Città | q normalizzata da 2 a 100 caratteri; page da 0, default 0; size default 20, minimo 1, massimo 20 |
+
+Le tratte sono ordinate per `createdAt DESC, id DESC`. Le città sono ordinate per nome, paese e ID. Il frontend mostra i numeri di pagina partendo da 1.
+
+La ricerca usa gli alias normalizzati e confronta l’inizio del nome. La normalizzazione elimina i segni diacritici, uniforma gli spazi e converte in minuscolo. I caratteri speciali LIKE vengono trattati come testo. I parametri fuori limite producono HTTP 400.
+
+### Sicurezza ed errori
+
+SecurityConfig riserva ad ADMIN tutte le API elencate. I guard Angular proteggono la navigazione amministrativa. L’interceptor aggiunge il Bearer alle richieste sullo stesso origin. La configurazione CORS include PUT, PATCH e DELETE.
+
+`ApiErrorResponse` contiene `timestamp`, `status`, `error`, `message` e `fieldErrors`.
+
+| Stato | Significato |
+| --- | --- |
+| 400 | Richiesta non valida, destinazione assente/inesistente, regola business violata o parametri di ricerca non validi |
+| 401 | Autenticazione assente o non valida |
+| 403 | Ruolo insufficiente |
+| 404 | UUID valido di una tratta inesistente |
+| 409 | Tratta duplicata |
+
+Un `destinationCityId` inesistente produce 400. Un ID di tratta inesistente produce 404 per le operazioni sulla tratta, anche ripetendo DELETE. UUID non convertibile e body assente o non leggibile producono 400. Un oggetto JSON `{}` sulla PATCH non soddisfa l’obbligatorietà di `active`.
+
+Il frontend distingue gli errori applicabili alle diverse operazioni. Il 429 resta relativo al login.
 
 ### Sessione e dipendenze auth
 
@@ -246,28 +359,41 @@ L’analisi prevede che un account con cambio password obbligatorio non possa us
 
 ## 7. Criteri di accettazione e verifiche
 
+### Aggiornamento geografico del 26 ottobre 2026
+
+- **IMPLEMENTATO NEI SORGENTI:** catalogo, importatore, API di ricerca, destinazione delle tratte per ID, migrazioni e selezione nel frontend.
+- **EVIDENZA DI ESECUZIONE:** output dell’importazione condiviso dall’utente, con 90414 città elaborate, 96894 alias scritti ed exit code 0.
+- Il risultato dell’importazione non certifica l’esecuzione delle migrazioni successive o il flusso completo Angular → backend → PostgreSQL.
+- Le verifiche del 23–24 ottobre riportate sotto sono evidenze storiche della versione precedente al catalogo.
+- Per la nuova versione non è stato acquisito un esito di build o di esecuzione del flusso completo.
+
+### Criteri ed evidenze pregresse
+
 Gli ID AC e i risultati attesi mantengono il riferimento all'analisi originale. Le colonne finali separano presenza del codice ed evidenza di esecuzione; le variazioni concordate del layout sono descritte nella sezione 3. Un esito con HTTP simulato non certifica backend, autorizzazioni o persistenza.
 
 | Riferimento | Scenario | Risultato atteso | Implementazione | Verifica |
 | --- | --- | --- | --- | --- |
-| AC-01 | Login ADMIN nel flusso finale per ruolo | Apertura della landing ADMIN; eventuale cambio password obbligatorio subordinato allo sviluppo auth dedicato | IMPLEMENTATO; dipendenza cambio obbligatorio separata | DA VERIFICARE: login reale per ruolo |
-| AC-02 | Landing prima della consegna dell’immagine | Menu sinistro e segnaposto centrale leggibile | IMPLEMENTATO con scelte concordate: menu destro e aereo | DA VERIFICARE: landing completa e schermi piccoli |
+| AC-01 | Login ADMIN nel flusso finale per ruolo | Apertura della landing ADMIN; eventuale cambio password obbligatorio subordinato allo sviluppo auth dedicato | IMPLEMENTATO; dipendenza cambio obbligatorio separata | PARZIALE: accesso ADMIN e redirect verificati in Chromium con auth simulata; login reale per ruolo non certificata da questa prova |
+| AC-02 | Landing prima della consegna dell’immagine | Menu sinistro e segnaposto centrale leggibile | IMPLEMENTATO con scelte concordate: menu destro e aereo | PARZIALE: layout di sessione della pagina Tratte controllato a 1440 e 390 px con API simulate; landing completa da verificare |
 | AC-03 | Consegna dell’immagine dell’aeroporto | Asset sostituisce il segnaposto mantenendo navigazione, permessi, proporzioni e testo alternativo | NON IMPLEMENTATO: asset cliente non disponibile | DA ESEGUIRE dopo consegna asset |
-| AC-04 | Selezione delle voci Modelli di aereo e Tratte | Lista e form nell’area centrale, menu sempre disponibile | PARZIALE: Tratte presente, Modelli assente | DA VERIFICARE: navigazione completa |
-| AC-05 | Login OPERATORI nel flusso per ruolo | Benvenuto senza menu amministrativo | PARZIALE: OPERATORI su /home; /operatori assente | DA VERIFICARE: login OPERATORI |
-| AC-06 | OPERATORI apre URL ADMIN o chiama GET/POST di entrambe le anagrafiche | Navigazione negata; API `403`, nessun dato amministrativo restituito o modificato | PARZIALE: controlli tratte presenti, modelli assenti | DA VERIFICARE: URL ADMIN e chiamate API |
+| AC-04 | Selezione delle voci Modelli di aereo e Tratte | Lista e form nell’area centrale, menu sempre disponibile | PARZIALE: Tratte presente, Modelli assente | PARZIALE: navigazione ADMIN → Tratte verificata in Chromium con auth/API simulate; Modelli dipende dallo sviluppo |
+| AC-05 | Login OPERATORI nel flusso per ruolo | Benvenuto senza menu amministrativo | PARZIALE: OPERATORI su /home; /operatori assente | Login API OPERATORI utilizzata nelle prove confermate dall’utente; navigazione frontend reale OPERATORI da verificare |
+| AC-06 | OPERATORI apre URL ADMIN o chiama GET/POST di entrambe le anagrafiche | Navigazione negata; API `403`, nessun dato amministrativo restituito o modificato | PARZIALE: controlli tratte presenti, modelli assenti | URL ADMIN e GET/POST del criterio originale da verificare; `403` su PUT/PATCH/DELETE confermati dall’utente nell’estensione tratte |
 | AC-07 | ADMIN salva un modello valido | `201`, record persistito e lista con nome, categoria, passeggeri, carburante e piloti | NON IMPLEMENTATO | DA ESEGUIRE |
 | AC-08 | Stessa categoria con capacità differenti | Entrambi i modelli ammessi | NON IMPLEMENTATO | DA ESEGUIRE |
 | AC-09 | Capacità zero, negativa o decimale; categoria non ammessa; piloti 0, 3 o decimali; carburante vuoto | `400`, nessun salvataggio | NON IMPLEMENTATO | DA ESEGUIRE |
 | AC-10 | Nome modello duplicato, anche con maiuscole o spazi esterni diversi e richieste concorrenti | `409`, nessun duplicato nel database | NON IMPLEMENTATO | DA ESEGUIRE |
-| AC-11 | Inserimento Milano e Roma con ritorno e Londra con scelta esplicita | Tre rotte commerciali, tipo derivato corretto; possibile aggiungerne altre | IMPLEMENTATO per le tratte; inserimento iniziale non attestato | DA VERIFICARE: POST e dati reali |
-| AC-12 | Tratta duplicata oppure Napoli come destinazione | Duplicato `409`; destinazione non valida `400`; nessun salvataggio | IMPLEMENTATO per le tratte | PARZIALE: gestione frontend del 409 simulato verificata; backend e DB da verificare |
-| AC-13 | Annullamento di uno dei form | Nessun nuovo record | PARZIALE: form tratte presente, form modelli assente | PARZIALE: reset e riapertura tratte verificati con HTTP simulato; DB non verificato |
-| Integrazione API | Input obbligatori assenti, testi oltre i limiti o paese non ammesso | `400`, nessun salvataggio | IMPLEMENTATO per le tratte | DA VERIFICARE: validazione effettiva delle API; sola gestione frontend del 400 verificata |
-| Integrazione tratte | Ritorno non indicato o disabilitato per Milano/Roma; creazioni concorrenti della stessa tratta | Rifiuto dei dati non validi; duplicato `409` e una sola rotta persistita | IMPLEMENTATO per le tratte | DA VERIFICARE: vincoli e concorrenza su PostgreSQL |
-| Integrazione liste | Consultazione dopo salvataggio e richieste di paginazione | Record visibile e dimensione massima rispettata dal server | IMPLEMENTATO per le tratte | DA VERIFICARE: salvataggio riuscito, pagine multiple e limite server |
-| Integrazione frontend | Errore durante il salvataggio o richiesta in corso | Dati conservati, errore mostrato e invii ripetuti impediti | IMPLEMENTATO per le tratte | PARZIALE: 10 test Angular superati; doppio clic e flusso di successo da verificare |
-| Integrazione sessione | Token assente, non valido o revocato sulle nuove API | `401`; nessuna scrittura ritentata automaticamente dopo login | IMPLEMENTATO tramite gestione auth esistente | PARZIALE: assenza token su PUT/PATCH/DELETE confermata dall’utente; altri casi da verificare |
+| AC-11 | Inserimento Milano e Roma con ritorno e Londra con scelta esplicita | Tre rotte commerciali, tipo derivato corretto; possibile aggiungerne altre | IMPLEMENTATO per le tratte | PARZIALE: righe Milano, Roma e Londra visibili nello screenshot pgAdmin; creazione di una tratta di prova confermata dall’utente. Inserimento iniziale completo tramite frontend non attestato |
+| AC-12 | Tratta duplicata oppure Napoli come destinazione | Duplicato `409`; destinazione non valida `400`; nessun salvataggio | IMPLEMENTATO per le tratte | PARZIALE: gestione frontend del `409` simulato verificata il 23 ottobre; rifiuto reale di duplicati e destinazione Napoli da verificare |
+| AC-13 | Annullamento di uno dei form | Nessun nuovo record | PARZIALE: form tratte presente, form modelli assente | PARZIALE: reset e riapertura tratte verificati con HTTP simulato il 23 ottobre; persistenza e form modelli non verificati |
+| Integrazione API | destinationCityId assente, non positivo o inesistente; ritorno assente; query fuori limite | 400, nessun salvataggio | IMPLEMENTATO nei sorgenti | Nessuna nuova evidenza di esecuzione registrata per il contratto geografico |
+| Integrazione tratte | Ritorno non indicato o disabilitato per Milano/Roma; creazioni concorrenti della stessa tratta | Rifiuto dei dati non validi; duplicato `409` e una sola rotta persistita | IMPLEMENTATO per le tratte | DA VERIFICARE: casi business e concorrenza PostgreSQL; le prove CRUD positive non certificano questi rifiuti |
+| Integrazione liste | Consultazione dopo salvataggio e richieste di paginazione | Record visibile e dimensione massima rispettata dal server | IMPLEMENTATO per le tratte | PARZIALE: lista aggiornata dopo PUT/PATCH/DELETE, più pagine e recupero dell’ultima pagina verificati in Chromium con API simulate; limite server e flusso browser/backend/DB reali da verificare |
+| Integrazione frontend | Errore durante il salvataggio o richiesta in corso | Dati conservati, errore mostrato e invii ripetuti impediti | IMPLEMENTATO per le tratte | PARZIALE: 10 test Angular storici del 23 ottobre; flussi positivi PUT/PATCH/DELETE, blocco azioni e GET fallita dopo DELETE verificati in Chromium il 24 ottobre. Doppio clic e ulteriori errori con backend reale da verificare |
+| Integrazione sessione | Token assente, non valido o revocato sulle nuove API | `401`; nessuna scrittura ritentata automaticamente dopo login | IMPLEMENTATO tramite gestione auth esistente | PARZIALE: assenza token su PUT/PATCH/DELETE confermata dall’utente; token non valido, scaduto o revocato e ripresa della sessione da verificare |
+| Estensione: modifica | ADMIN modifica una tratta esistente | PUT `200`, dati aggiornati, ID/origine/data/stato conservati | IMPLEMENTATO | Prova Postman/SQL e test di integrazione confermati dall’utente; form precompilato, body PUT e aggiornamento lista verificati in Chromium con API simulate |
+| Estensione: stato | ADMIN disattiva e riattiva una tratta | PATCH `200`, riga conservata, stato aggiornato | IMPLEMENTATO | PATCH, ripetizione dello stesso stato e riscontro DB confermati dall’utente; pulsanti, messaggi e body `false`/`true` verificati in Chromium con API simulate |
+| Estensione: eliminazione | ADMIN annulla o conferma l’eliminazione | Annullamento senza DELETE; conferma con `204`, riga rimossa e pagina valida | IMPLEMENTATO | DELETE/SQL/seconda DELETE `404` confermati dall’utente; conferma e annullamento, lista vuota, recupero pagina e GET fallita successiva verificati in Chromium con API simulate |
 
 ### Verifiche eseguite il 23 ottobre 2026
 
@@ -276,7 +402,7 @@ Gli ID AC e i risultati attesi mantengono il riferimento all'analisi originale. 
 | `npm.cmd run build` | VERIFICATO: build riuscita | Compilazione frontend; non prova integrazione o persistenza |
 | `npm.cmd test -- --watch=false --include=src/app/admin/routes/admin-routes.spec.ts` | VERIFICATO: 1 file, 10 test superati | Componente Angular con richieste intercettate da `HttpTestingController`; nessun backend o database reale |
 
-I test di [admin-routes.spec.ts](frontend/src/app/admin/routes/admin-routes.spec.ts) verificano:
+Nel precedente contratto testuale, i test di [admin-routes.spec.ts](frontend/src/app/admin/routes/admin-routes.spec.ts) verificano:
 
 - Messaggi del server sotto i campi, valori conservati, form ancora aperto e controlli riabilitati dopo un `400`.
 - Pulizia degli errori dopo modifica dei dati, annullamento/riapertura e nuovo invio.
@@ -317,7 +443,7 @@ Acquisiti e controllati screenshot desktop (1440 px) e mobile (390 px). Artefatt
 | Sicurezza delle scritture | PUT/PATCH/DELETE senza token: `401`; con token OPERATORI: `403`, confermati dall’utente |
 | Primo test di integrazione tratte | Esecuzione positiva riferita dall’utente; sorgente [RoueServiceIntegrationTest.java](backend/src/test/java/it/raffo/backend/routes/RoueServiceIntegrationTest.java), classe `RouteServiceIntegrationTest` |
 
-Il test Java crea Torino, modifica in Londra e verifica normalizzazione, paese, ritorno, stato, ID e data invariati, rileggendo PostgreSQL dopo `EntityManager.clear()`. Usa Testcontainers e Liquibase; l’assistente ha letto il sorgente ma non ha rieseguito il comando né acquisito il report Maven.
+Nell’esecuzione storica con il precedente contratto testuale, il test Java crea Torino, modifica in Londra e verifica normalizzazione, paese, ritorno, stato, ID e data invariati, rileggendo PostgreSQL dopo `EntityManager.clear()`. Usa Testcontainers e Liquibase; l’assistente ha letto il sorgente ma non ha rieseguito il comando né acquisito il report Maven.
 
 ### Verifiche residue e limiti
 
@@ -335,13 +461,13 @@ Il test Java crea Torino, modifica in Londra e verifica normalizzazione, paese, 
 | Carburante | Campo testuale obbligatorio previsto per iniziare; catalogo dei valori consentiti ancora da concordare |
 | Ritorno da Londra | Ipotesi di andata e ritorno, non requisito confermato; il form richiede comunque una scelta esplicita |
 | Aeroporti specifici | Per ora si identificano le città; gli aeroporti di Milano, Roma e Londra restano da scegliere |
-| Paesi europei | Implementazione attuale limitata a `IT` e `GB` in enum, DTO, migrazione e form; eventuale ampliamento del catalogo europeo ancora da definire |
+| Paesi europei | Catalogo attuale limitato a IT e GB; il paese è derivato dalla città. L’ampliamento ad altri paesi resta da definire |
 | Posizione del menu | Scelta concordata con l'utente durante lo sviluppo: destra su desktop, sopra il contenuto su schermi piccoli; diversa dal menu sinistro dell'analisi originale |
 | Immagine della landing ADMIN | Scelta concordata con l'utente: riuso dell'aereo SVG esistente; immagine dell'aeroporto del cliente ancora futura |
 | Permessi operativi | OPERATORI senza funzioni amministrative; future attività operative da definire |
 | Orari e frequenza | Non definiti; non dedurre un numero di voli giornalieri dalle rotte iniziali |
 
-Le regole tecniche dettagliate dei campi provengono da RF-05/RF-06 e dal modello dati dell’analisi. Sono la specifica di lavoro proposta, senza trasformare le ipotesi dichiarate nella fonte in nuove conferme del cliente.
+Le regole tecniche dei campi provengono da RF-05/RF-06 e dal modello dati dell’analisi, con l’estensione geografica richiesta dall’utente: selezione per ID e paese derivato dalla città. Le ipotesi ancora aperte nella fonte restano distinte dalle decisioni concordate.
 
 ## 9. Funzionalità rinviate e fuori perimetro
 
@@ -359,13 +485,13 @@ L’eventuale vendita futura è ipotizzata allo sportello tramite personale, sen
 
 ## 10. Stato di avanzamento e ordine di ripresa
 
-1. **IMPLEMENTATO** — Gestione tratte completa nel perimetro concordato: lista, creazione, modifica, disattivazione/riattivazione, cancellazione con conferma e recupero della pagina valida.
-2. **VERIFICATO DIRETTAMENTE** — Build frontend e 10 controlli Chromium con API simulate del 24 ottobre, oltre alle evidenze storiche del 23 ottobre.
-3. **VERIFICATO DALL’UTENTE** — Prove Postman/SQL, autorizzazioni PUT/PATCH/DELETE e primo test di integrazione Java, con i limiti indicati nella sezione 7.
-4. **DA VERIFICARE** — Integrazione completa del browser con backend/database reali e scenari residui; non confonderli con la compilazione o la simulazione HTTP.
-5. **PARZIALE rispetto all’analisi originale** — Landing ADMIN e navigazione presenti; restano asset cliente, percorso `/operatori` dedicato e anagrafica modelli di aereo.
-6. **NON IMPLEMENTATO, fase futura** — Modelli di aereo e gli altri sviluppi elencati nella sezione 9.
-7. **DA PREPARARE per la consegna** — Istruzioni di avvio senza segreti e risultati delle verifiche necessarie alla consegna.
+1. **IMPLEMENTATO NEI SORGENTI** — Gestione tratte con creazione, modifica, stato, eliminazione, paginazione e selezione della destinazione dal catalogo geografico.
+2. **IMPLEMENTATO NEI SORGENTI** — Schema con foreign key, vincoli basati sugli ID e rimozione dei campi geografici duplicati.
+3. **ESECUZIONE DOCUMENTATA** — Importazione del catalogo: 90414 città elaborate e 96894 alias scritti.
+4. **EVIDENZA STORICA** — Risultati del 23–24 ottobre relativi alla versione precedente al catalogo, descritti nella sezione 7.
+5. **NON ATTESTATO** — Esecuzione delle migrazioni 007–009, build aggiornata e flusso completo della nuova versione attraverso browser, backend e database.
+6. **SVILUPPI FUTURI** — Modelli di aereo e funzionalità rinviate elencate nella sezione 9.
 
-Il percorso resta didattico: il codice viene scritto dallo sviluppatore con guida passo per passo, salvo eccezioni esplicitamente autorizzate. Il completamento di HTML/SCSS, gli interventi sul componente e l’aggiornamento documentale sono stati autorizzati espressamente dall’utente.
+Il percorso resta didattico: lo sviluppatore scrive il codice con guida passo per passo, salvo eccezioni autorizzate espressamente. Per questo aggiornamento documentale l’utente ha autorizzato la modifica diretta di Aircraft_Routes.md.
 
+La documentazione distingue le funzionalità presenti nei sorgenti dalle evidenze di esecuzione effettivamente disponibili.

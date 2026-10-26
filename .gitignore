@@ -23,3 +23,6 @@ test-automation/node_modules/
 test-automation/test-results/
 test-automation/playwright-report/
 test-automation/blob-report/
+
+# File sorgenti GeoNames usati per l'importazione locale
+/backend/geodata/geonames/raw/

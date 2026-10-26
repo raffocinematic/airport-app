@@ -31,28 +31,162 @@
 
     <p>Origine: <strong>Napoli</strong></p>
 
-    <label for="destinationCity">Città di destinazione *</label>
+    <label for="destinationSearch">Città di destinazione *</label>
+
     <input
-      id="destinationCity"
+      id="destinationSearch"
       type="text"
-      formControlName="destinationCity"
-      maxlength="100"
-      required
-      (blur)="normalizeDestination()"
+      [formControl]="destinationSearch"
+      autocomplete="off"
+      aria-required="true"
+      aria-describedby="destination-search-help"
+      [attr.aria-invalid]="
+    form.controls.destinationCityId.touched
+    && (
+      form.controls.destinationCityId.invalid
+      || form.hasError('destinationIsOrigin')
+    )
+  "
+      (blur)="form.controls.destinationCityId.markAsTouched()"
     />
 
+    <p id="destination-search-help">
+      Digita da 2 a 100 caratteri e seleziona una città dai risultati.
+      Il paese viene determinato dalla città scelta.
+    </p>
+
+    @if (searchingDestinations()) {
+    <p role="status">Ricerca delle città...</p>
+    } @else if (destinationSearchErrorMessage()) {
+    <p class="field-error" role="alert">
+      {{ destinationSearchErrorMessage() }}
+    </p>
+
+    <button
+      class="route-action"
+      type="button"
+      (click)="searchDestinations()"
+      [disabled]="saving() || loading()"
+    >
+      Riprova la ricerca
+    </button>
+    } @else if (destinationPage(); as destinations) {
+    @if (destinations.content.length === 0) {
+    <p role="status">Nessuna città trovata. Modifica la ricerca.</p>
+    } @else {
+    <p role="status">
+      Città trovate: {{ destinations.totalElements }}.
+      Seleziona la destinazione desiderata.
+    </p>
+
+    <ul
+      class="destination-results"
+      aria-label="Destinazioni disponibili"
+    >
+      @for (city of destinations.content; track city.id) {
+      <li>
+        <button
+          class="destination-option"
+          type="button"
+          (click)="selectDestination(city)"
+          [disabled]="saving() || loading() || searchingDestinations()"
+        >
+            <span class="destination-option__name">
+              {{ city.name }}
+            </span>
+
+          <span class="destination-option__details">
+              {{ city.countryCode === 'IT' ? 'Italia' : 'Regno Unito' }}
+
+              @if (city.admin1Name) {
+                · {{ city.admin1Name }}
+              }
+
+              @if (city.admin2Name) {
+                · {{ city.admin2Name }}
+              }
+            </span>
+        </button>
+      </li>
+      }
+    </ul>
+
+    @if (destinations.totalPages > 1) {
+    <nav
+      class="pagination"
+      aria-label="Paginazione delle città"
+    >
+      <button
+        type="button"
+        (click)="changeDestinationPage(destinations.page - 1)"
+        [disabled]="
+            saving()
+            || loading()
+            || searchingDestinations()
+            || destinations.page === 0
+          "
+      >
+        Città precedenti
+      </button>
+
+      <span role="status">
+          Pagina {{ destinations.page + 1 }}
+          di {{ destinations.totalPages }}
+        </span>
+
+      <button
+        type="button"
+        (click)="changeDestinationPage(destinations.page + 1)"
+        [disabled]="
+            saving()
+            || loading()
+            || searchingDestinations()
+            || destinations.page + 1 >= destinations.totalPages
+          "
+      >
+        Città successive
+      </button>
+    </nav>
+    }
+    }
+    }
+
+    @if (selectedDestination(); as city) {
+    <div class="destination-selection">
+      <p>
+        Destinazione selezionata: <strong>{{ city.name }}</strong>
+      </p>
+
+      <p>
+        Paese di destinazione:
+        <strong>
+          {{ city.countryCode === 'IT' ? 'Italia' : 'Regno Unito' }}
+        </strong>
+      </p>
+
+      @if (city.admin1Name) {
+      <p>Area amministrativa: {{ city.admin1Name }}</p>
+      }
+
+      @if (city.admin2Name) {
+      <p>Area amministrativa locale: {{ city.admin2Name }}</p>
+      }
+    </div>
+    } @else {
+    <p>Paese di destinazione: seleziona una città.</p>
+    }
+
     @if (
-    form.controls.destinationCity.touched
-    && form.controls.destinationCity.invalid
+    form.controls.destinationCityId.touched
+    && form.controls.destinationCityId.invalid
     ) {
     <p class="field-error" role="alert">
-      Inserisci una destinazione, massimo 100 caratteri.
-      Non può essere composta soltanto da spazi.
+      Seleziona una città dai risultati della ricerca.
     </p>
     }
 
     @if (
-    form.controls.destinationCity.touched
+    form.controls.destinationCityId.touched
     && form.hasError('destinationIsOrigin')
     ) {
     <p class="field-error" role="alert">
@@ -60,39 +194,14 @@
     </p>
     }
 
-    @if (serverFieldErrors().destinationCity; as message) {
-    <p class="field-error" role="alert">
-      {{ message }}
-    </p>
-    }
-
-    <label for="destinationCountryCode">Paese di destinazione *</label>
-    <select
-      id="destinationCountryCode"
-      formControlName="destinationCountryCode"
-      required
-    >
-      <option [ngValue]="null">Seleziona un paese</option>
-      <option value="IT">Italia</option>
-      <option value="GB">Regno Unito</option>
-    </select>
-
-    @if (
-    form.controls.destinationCountryCode.touched
-    && form.controls.destinationCountryCode.invalid
-    ) {
-    <p class="field-error" role="alert">
-      Seleziona il paese di destinazione.
-    </p>
-    }
-
-    @if (serverFieldErrors().destinationCountryCode; as message) {
+    @if (serverFieldErrors().destinationCityId; as message) {
     <p class="field-error" role="alert">
       {{ message }}
     </p>
     }
 
     <label for="returnEnabled">Collegamento di ritorno *</label>
+
     <select
       id="returnEnabled"
       formControlName="returnEnabled"
@@ -115,7 +224,7 @@
     @if (
     form.hasError('returnRequired')
     && (
-    form.controls.destinationCity.touched
+    form.controls.destinationCityId.touched
     || form.controls.returnEnabled.touched
     )
     ) {
@@ -139,7 +248,7 @@
     <button
       class="route-action"
       type="submit"
-      [disabled]="saving() || loading()"
+      [disabled]="saving() || loading() || searchingDestinations()"
     >
       {{ saving()
       ? 'Salvataggio...'
@@ -215,7 +324,21 @@
       @for (route of page.content; track route.id) {
       <tr>
         <td>{{ route.originCity }}</td>
-        <td>{{ route.destinationCity }}</td>
+        <td>
+          {{ route.destinationCity }}
+
+          @if (route.destinationAdmin1Name || route.destinationAdmin2Name) {
+          <small class="destination-context">
+            {{ route.destinationAdmin1Name }}
+
+            @if (route.destinationAdmin1Name && route.destinationAdmin2Name) {
+            ·
+            }
+
+            {{ route.destinationAdmin2Name }}
+          </small>
+          }
+        </td>
         <td>
           {{ route.destinationCountryCode === 'IT'
           ? 'Italia'
